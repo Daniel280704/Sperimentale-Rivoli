@@ -1,7 +1,8 @@
-#!/usr/bin/env python3
+    #!/usr/bin/env python3
 import os
 import requests
 import sys
+import google.generativeai as genai
 
 LAT = 45.0716
 LON = 7.5157
@@ -9,10 +10,11 @@ LON = 7.5157
 def interpella_gemini(dati_meteo):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("⚠️ GEMINI_API_KEY mancante!")
+        print("⚠️ GEMINI_API_KEY mancante! Inseriscila nei Secrets di GitHub.")
         sys.exit(1)
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+    # Configurazione della libreria ufficiale Google
+    genai.configure(api_key=api_key)
     
     prompt = f"""
     Sei un meteorologo esperto e un divulgatore scientifico. Scrivi il bollettino meteo di nowcasting per oggi a Rivoli (Piemonte).
@@ -38,20 +40,19 @@ def interpella_gemini(dati_meteo):
     {dati_meteo}
     """
 
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.25} 
-    }
-
     try:
-        resp = requests.post(url, json=payload, timeout=30)
-        resp.raise_for_status()
-        risultato = resp.json()
-        return risultato["candidates"][0]["content"]["parts"][0]["text"]
+        # Inizializziamo il modello (la libreria capisce in automatico il server corretto)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.25,
+            )
+        )
+        return response.text
     except Exception as e:
-        print(f"❌ Errore API Gemini: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            print("Dettaglio errore Gemini:", e.response.text)
+        print(f"❌ Errore Google Generative AI: {e}")
         sys.exit(1)
 
 def invia_telegram(testo):
@@ -101,18 +102,15 @@ def main():
 
     orari = dati_det["hourly"]["time"]
     
-    # Estraiamo i deterministici (con filtro anti-crash)
     pioggia_d2 = [p if p is not None else 0.0 for p in dati_det["hourly"].get("precipitation_icon_d2", [0]*24)]
     pioggia_arome = [p if p is not None else 0.0 for p in dati_det["hourly"].get("precipitation_arome_france", [0]*24)]
 
-    # Elaborazione matematica dei 20 membri dell'EPS
     print("🧮 Calcolo Media e Max sui 20 scenari EPS...")
     pioggia_eps_media = []
     pioggia_eps_max = []
     
     for i in range(24):
         valori_ora_eps = []
-        # I membri si chiamano precipitation_member01, precipitation_member02... fino a 20
         for membro in range(1, 21):
             chiave = f"precipitation_member{membro:02d}"
             if chiave in dati_eps["hourly"]:
