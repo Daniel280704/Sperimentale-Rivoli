@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Bot Agronomico per Ortive Estive
-Modelli: ICON-Seamless (Fitosaniario/Termico/ET0) + ECMWF (Idrico/Suolo)
-Versione: Anti-Crash (Gestione dei dati None)
+Modello Unico: ICON-Seamless
+Versione: Anti-Crash + Suolo in Tempo Reale + Bilancio Pioggia Storica + Planning Serale
 """
 
 import os
@@ -45,33 +45,27 @@ def invia_messaggio_telegram(testo):
         print(f"❌ Errore invio Telegram: {e}")
 
 def main():
-    print("🚀 Raccolta dati da ICON-Seamless e ECMWF...")
+    print("🚀 Raccolta dati da ICON-Seamless...")
     
-    # Dati per malattie, insetti ed Evapotraspirazione (ICON)
+    # Aggiunto past_days=1 per recuperare la pioggia di ieri
     icon_params = {
         "latitude": LAT, "longitude": LON,
         "models": "icon_seamless",
-        "hourly": "temperature_2m,relative_humidity_2m",
-        "daily": "temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration",
+        "hourly": "temperature_2m,relative_humidity_2m,soil_moisture_7_to_28cm",
+        "daily": "temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration,precipitation_sum",
         "timezone": "Europe/Rome",
-        "forecast_days": 3
+        "forecast_days": 3,
+        "past_days": 1
     }
-    icon_data = fetch_data("https://api.open-meteo.com/v1/forecast", icon_params)
-    
-    # Dati per umidità profonda del suolo (ECMWF)
-    ecmwf_params = {
-        "latitude": LAT, "longitude": LON,
-        "models": "ecmwf_ifs04",
-        "hourly": "soil_moisture_7_to_28cm",
-        "timezone": "Europe/Rome",
-        "forecast_days": 3
-    }
-    ecmwf_data = fetch_data("https://api.open-meteo.com/v1/forecast", ecmwf_params)
+    dati = fetch_data("https://api.open-meteo.com/v1/forecast", icon_params)
 
+    # Avendo 1 giorno di storico, "Oggi" inizia all'indice 24 per le ore e all'indice 1 per i giorni.
+    
     # --- 1. MODULO FITOSANITARIO (FUNGHI) ---
     ore_rischio = 0
-    temperature = icon_data["hourly"]["temperature_2m"][:48]
-    umidita = icon_data["hourly"]["relative_humidity_2m"][:48]
+    # Prendiamo le 48 ore di previsione partendo da oggi (da ora 24 a 72)
+    temperature = dati["hourly"]["temperature_2m"][24:72]
+    umidita = dati["hourly"]["relative_humidity_2m"][24:72]
     
     for t, rh in zip(temperature, umidita):
         if t is not None and rh is not None:
@@ -79,56 +73,72 @@ def main():
                 ore_rischio += 1
             
     if ore_rischio > 8:
-        stato_funghi = f"🔴 <b>ALTO ({ore_rischio}h di bagnatura fogliare)</b>\n<i>Attenzione per Cuori di bue e Datterini (Peronospora) e Zucchine (Oidio). Valutare trattamenti preventivi con rame/zolfo.</i>"
+        stato_funghi = f"🔴 <b>ALTO ({ore_rischio}h di bagnatura fogliare)</b>\n<i>Attenzione per Cuori di bue e Datterini (Peronospora) e Zucchine (Oidio). Valutare trattamenti preventivi.</i>"
     elif ore_rischio > 3:
         stato_funghi = f"🟡 <b>MEDIO ({ore_rischio}h di bagnatura fogliare)</b>\n<i>Arieggiare la vegetazione dei pomodori sfemminellando la parte bassa.</i>"
     else:
         stato_funghi = f"🟢 <b>BASSO ({ore_rischio}h di bagnatura fogliare)</b>\n<i>Condizioni asciutte, basso rischio fungino.</i>"
 
-    # --- 2. MODULO IRRIGAZIONE ---
-    # Estrazione con ICON per ET0, ECMWF per suolo
-    et_oggi_raw = icon_data["daily"]["et0_fao_evapotranspiration"][0]
-    et_domani_raw = icon_data["daily"]["et0_fao_evapotranspiration"][1]
-    umidita_raw = ecmwf_data["hourly"]["soil_moisture_7_to_28cm"][12]
+    # --- 2. MODULO IRRIGAZIONE E SUOLO ---
+    # Indice 0 = Ieri, Indice 1 = Oggi, Indice 2 = Domani
+    pioggia_ieri_raw = dati["daily"]["precipitation_sum"][0]
+    et_oggi_raw = dati["daily"]["et0_fao_evapotranspiration"][1]
+    et_domani_raw = dati["daily"]["et0_fao_evapotranspiration"][2]
     
+    # Troviamo l'ora esatta di adesso (sommando le 24 ore di ieri)
+    ora_attuale_index = 24 + datetime.now().hour
+    umidita_raw = dati["hourly"]["soil_moisture_7_to_28cm"][ora_attuale_index]
+    
+    pioggia_ieri = pioggia_ieri_raw if pioggia_ieri_raw is not None else 0.0
     et_oggi = et_oggi_raw if et_oggi_raw is not None else 0.0
     et_domani = et_domani_raw if et_domani_raw is not None else 0.0
     umidita_suolo_radici = umidita_raw if umidita_raw is not None else 0.0
     
     consiglio_idrico = ""
-    if et_oggi > 5.0:
-        consiglio_idrico = "L'evaporazione è molto alta. Zucchine e melanzane richiederanno un forte apporto idrico. Per i pomodori (specie i cuori di bue, soggetti a marciume apicale), assicurare bagnature profonde e regolari, ma evitare ristagni."
-    elif et_oggi > 3.0:
-        consiglio_idrico = "Evaporazione nella norma estiva. Mantenere irrigazione regolare senza eccessi per evitare spaccature sui pomodorini (ciliegini/datterini)."
+    # Nuova logica: indicazioni specifiche per le irrigazioni serali
+    if pioggia_ieri >= 5.0:
+        consiglio_idrico = f"Ha piovuto abbondantemente ({pioggia_ieri} mm). <b>Stasera irrigazione sospesa</b> per non causare asfissia radicale alle zucchine e marciumi."
+    elif pioggia_ieri > 1.0:
+        consiglio_idrico = f"Pioggia leggera recente ({pioggia_ieri} mm). <b>Stasera controlla il terreno</b> al tatto: irriga solo se la superficie risulta polverosa."
     else:
-        consiglio_idrico = "Evaporazione bassa. Sospendere irrigazione se il terreno risulta già umido al tatto a 10cm di profondità."
+        if et_oggi > 5.0:
+            consiglio_idrico = "Forte evaporazione diurna. <b>Stasera irriga abbondantemente</b> zucchine e melanzane. Fai una bagnatura profonda sui pomodori (specialmente i cuori di bue)."
+        elif et_oggi > 3.0:
+            consiglio_idrico = "Evaporazione nella norma. <b>Stasera mantieni un'irrigazione regolare</b>, senza eccessi per non far spaccare i datterini e pomodorini."
+        else:
+            consiglio_idrico = "Evaporazione bassa. <b>Stasera puoi sospendere l'acqua</b> se il terreno risulta già umido al tatto nei primi 10cm."
+
+    # Aggiunta di un alert per pianificare la sera successiva
+    if et_domani > 5.0:
+        consiglio_idrico += f"\n🕒 <i>Anticipazione: preparati per <b>domani sera</b>. Prevista forte evaporazione ({et_domani} mm), servirà parecchia acqua.</i>"
+    elif et_domani <= 3.0:
+        consiglio_idrico += f"\n🕒 <i>Anticipazione: per <b>domani sera</b> l'evaporazione calerà ({et_domani} mm), probabile pausa irrigazione.</i>"
 
     # --- 3. MODULO INSETTI (Gradi Giorno - GDD) ---
-    t_max_raw = icon_data["daily"]["temperature_2m_max"][0]
-    t_min_raw = icon_data["daily"]["temperature_2m_min"][0]
+    t_max_raw = dati["daily"]["temperature_2m_max"][1]
+    t_min_raw = dati["daily"]["temperature_2m_min"][1]
     
     t_max = t_max_raw if t_max_raw is not None else 25.0
     t_min = t_min_raw if t_min_raw is not None else 15.0
     
-    # Calcolo semplificato GDD base 10 (Popillia / Afidi)
     gdd_oggi = max(0, ((t_max + t_min) / 2) - 10)
     
     if gdd_oggi > 14:
-        stato_insetti = f"🔴 <b>ELEVATA ({gdd_oggi:.1f} GDD oggi)</b>\n<i>Temperature ottimali per picco di attività e alimentazione di Popillia japonica e afidi.</i>"
+        stato_insetti = f"🔴 <b>ELEVATA ({gdd_oggi:.1f} GDD oggi)</b>\n<i>Temperature ottimali per sfarfallamento e alimentazione di Popillia japonica e afidi.</i>"
     else:
         stato_insetti = f"🟢 <b>MODERATA ({gdd_oggi:.1f} GDD oggi)</b>\n<i>Attività degli insetti nella norma.</i>"
 
     # --- COSTRUZIONE BOLLETTINO ---
-    data_oggi = datetime.now().strftime("%d/%m/%Y")
+    data_oggi = datetime.now().strftime("%d/%m/%Y alle %H:%M")
     
     messaggio = (
         f"🌱 <b>BOLLETTINO AGRONOMICO RIVOLI</b>\n"
         f"📅 <i>{data_oggi}</i>\n\n"
         
-        f"💧 <b>IRRIGAZIONE E SUOLO (0-30cm)</b>\n"
+        f"💧 <b>IRRIGAZIONE E BILANCIO IDRICO</b>\n"
+        f"• Pioggia ieri: <b>{pioggia_ieri} mm</b>\n"
         f"• Evapotraspirazione oggi: <b>{et_oggi} mm</b>\n"
-        f"• Evapotraspirazione domani: <b>{et_domani} mm</b>\n"
-        f"• Umidità media radici (ECMWF): <b>{umidita_suolo_radici:.2f} m³/m³</b>\n"
+        f"• Umidità radici attuale: <b>{umidita_suolo_radici:.3f} m³/m³</b>\n"
         f"💡 <i>{consiglio_idrico}</i>\n\n"
         
         f"🦠 <b>ALLERTA FUNGHI (Prossime 48h)</b>\n"
