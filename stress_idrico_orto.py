@@ -20,7 +20,6 @@ def get_rome_time():
         return datetime.utcnow() + timedelta(hours=2)
 
 def controlla_pulsante_telegram(token):
-    """Verifica se l'utente ha premuto il tasto di innaffiatura manuale."""
     url = f"https://api.telegram.org/bot{token}/getUpdates"
     offset = 0
     if os.path.exists("tg_offset_orto.txt"):
@@ -43,7 +42,6 @@ def controlla_pulsante_telegram(token):
                         requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery", 
                                       data={"callback_query_id": cb_id, "text": "Memoria irrigazione aggiornata!"})
                         
-                        # Salviamo la data dell'innaffiatura
                         with open("ultima_innaffiatura.txt", "w") as f:
                             f.write(get_rome_time().strftime("%Y-%m-%d"))
             
@@ -53,11 +51,7 @@ def controlla_pulsante_telegram(token):
         print(f"Errore lettura Telegram API: {e}")
 
 def valuta_stress(bilancio):
-    """
-    Calcola lo stress in base alla sommatoria dell'evaporazione netta (deficit).
-    Meno di 5: Nullo, 5-15: Intermedio, 15-20: Alto, >20: Estremo.
-    """
-    deficit = -bilancio  # Trasforma il bilancio negativo in deficit positivo
+    deficit = -bilancio 
     
     if deficit < 5.0:
         return "🟢 SCARSO O NULLO"
@@ -130,7 +124,6 @@ def calcola_dati_orto():
             if bilancio > 0.0:
                 bilancio = 0.0
                 
-            # Limite massimo di deficit (per evitare numeri infiniti e irreali)
             bilancio = max(bilancio, -25.0)
 
             if data_storica == ieri_str:
@@ -155,20 +148,44 @@ def calcola_dati_orto():
     bilancio = max(bilancio, -25.0)
     bil_oggi = bilancio
 
-    # --- PREVISIONI (Ensemble) ---
+    # Spostiamo qui la funzione EPS per poter calcolare la sera di oggi
     membri_eps = [k for k in dati_eps.keys() if "precipitation_member" in k]
     
     def calcola_eps_giorno(start, end):
         p_media = 0.0
-        if membri_eps and start and end:
-            for i in range(start, end + 1):
-                vals = [dati_eps[m][i] for m in membri_eps if dati_eps[m][i] is not None]
-                if vals:
-                    p_media += sum(vals) / len(vals)
-        elif start and end:
-            p_media = sum(p for p in p_det[start:end+1] if p is not None)
+        if start is not None and end is not None:
+            if membri_eps:
+                for i in range(start, end + 1):
+                    vals = [dati_eps[m][i] for m in membri_eps if dati_eps[m][i] is not None]
+                    if vals:
+                        p_media += sum(vals) / len(vals)
+            else:
+                p_media = sum(p for p in p_det[start:end+1] if p is not None)
         return p_media
 
+    # --- OGGI SERA (20:00 -> 23:00 inclusive) controllo ore scoperte ---
+    idx_sera_s = get_idx(f"{oggi_str}T20:00")
+    idx_sera_e = get_idx(f"{oggi_str}T23:00")
+    
+    p_sera = calcola_eps_giorno(idx_sera_s, idx_sera_e)
+    e_sera = 0.0
+    if idx_sera_s is not None and idx_sera_e is not None:
+        e_sera = sum(e for e in e_det[idx_sera_s:idx_sera_e+1] if e is not None)
+    
+    # Aggiorniamo il bilancio in background per avere il punto di partenza perfetto per domani
+    bilancio_fine_oggi = bil_oggi + p_sera - e_sera
+    if p_sera >= 3.0: 
+        bilancio_fine_oggi = 0.0
+    if bilancio_fine_oggi > 0.0: 
+        bilancio_fine_oggi = 0.0
+    bilancio_fine_oggi = max(bilancio_fine_oggi, -25.0)
+    
+    avviso_sera = ""
+    if p_sera >= 3.0:
+        avviso_sera = "\n*(Possibile pioggia a breve: l'attuale stato idrico potrebbe migliorare)*"
+
+    # --- PREVISIONI (Ensemble) ---
+    
     # Domani
     idx_domani_s = get_idx(f"{domani_str}T00:00")
     idx_domani_e = get_idx(f"{domani_str}T23:00")
@@ -177,7 +194,8 @@ def calcola_dati_orto():
     if idx_domani_s is not None and idx_domani_e is not None:
         e_domani = sum(e for e in e_det[idx_domani_s:idx_domani_e+1] if e is not None)
     
-    bil_domani = bil_oggi + p_domani - e_domani
+    # Domani parte dal bilancio ricalcolato di fine giornata di oggi
+    bil_domani = bilancio_fine_oggi + p_domani - e_domani
     if p_domani >= 3.0: bil_domani = 0.0
     if bil_domani > 0.0: bil_domani = 0.0
     bil_domani = max(bil_domani, -25.0)
@@ -197,7 +215,7 @@ def calcola_dati_orto():
 
     return {
         "ieri_stress": valuta_stress(bil_ieri), "ieri_p": p_ieri, "ieri_e": e_ieri,
-        "oggi_stress": valuta_stress(bil_oggi), "oggi_p": p_oggi, "oggi_e": e_oggi,
+        "oggi_stress": valuta_stress(bil_oggi), "oggi_p": p_oggi, "oggi_e": e_oggi, "oggi_avviso": avviso_sera,
         "domani_stress": valuta_stress(bil_domani), "domani_p": p_domani, "domani_e": e_domani,
         "dopo_stress": valuta_stress(bil_dopo), "dopo_p": p_dopo, "dopo_e": e_dopo,
         "data_reset": data_reset_manuale, "oggi_str": oggi_str, "ieri_str": ieri_str
@@ -218,7 +236,7 @@ Stato: {d['ieri_stress']}
 - Evaporazione avvenuta: {d['ieri_e']:.1f} mm
 
 Oggi (fino alle 19:00)
-Stato: {d['oggi_stress']}
+Stato: {d['oggi_stress']}{d['oggi_avviso']}
 - Pioggia caduta: {d['oggi_p']:.1f} mm
 - Evaporazione avvenuta: {d['oggi_e']:.1f} mm
 
@@ -240,7 +258,6 @@ def invia_telegram(messaggio, token, chat_id):
         print("Token o Chat ID mancanti.")
         return
 
-    # Tastiera interattiva senza emoji extra
     tastiera = {
         "inline_keyboard": [
             [{"text": "Ho bagnato l'orto! (Azzera)", "callback_data": "reset_idrico"}]
