@@ -9,6 +9,10 @@ on:
 jobs:
   crea_e_invia_grafici:
     runs-on: ubuntu-latest
+    
+    # Autorizzazione fondamentale per permettere al bot di salvare i file
+    permissions:
+      contents: write
 
     steps:
       - name: Estrazione del Codice Sorgente
@@ -32,3 +36,10 @@ jobs:
           python meteogramma_rivoli_gemini_13_bot.py --modello d2
           python meteogramma_rivoli_gemini_13_bot.py --modello arome
           python meteogramma_rivoli_gemini_13_bot.py --modello icon2i
+
+      # QUESTO PASSAGGIO SALVA L'IMPRONTA DIGITALE PER LA VOLTA DOPO
+      - name: Salva stato modelli per anti-spam
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Aggiornato stato hash modelli"
+          file_pattern: "ultimo_hash_*.txt"
