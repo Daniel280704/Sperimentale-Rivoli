@@ -2,7 +2,7 @@
 """
 Analizzatore Termodinamico e Cinematico per Rischio Temporali (Stile ESTOFEX)
 Modello: ICON-D2 (Copertura 48h)
-- Integrazione Filtro Precipitazioni ENS (Media Spaghi)
+- Integrazione Filtro Precipitazioni ENS (Media Spaghi > 0.0)
 - Calcolo esplicito dimensione grandine
 - Integrazione col nuovo SDK google.genai
 """
@@ -17,8 +17,8 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 
-LAT = 45.0716  # Rivoli
-LON = 7.5157
+LAT = 45.0734521841099  # Rivoli
+LON = 7.543386286825349
 
 def get_pioggia_ens_media():
     """Scarica i 20 membri EPS di D2 e calcola la media precipitativa giornaliera"""
@@ -211,10 +211,10 @@ def main():
 
     for data_str, indici in giorni.items():
         
-        # 1. CONTROLLO PIOGGIA: Se le Ensemble danno meno di 1 mm medio, si salta.
+        # 1. CONTROLLO PIOGGIA: Basta un segnale minimo (> 0.0) per non escludere l'innesco.
         media_pioggia_giorno = pioggia_ens.get(data_str, 0)
-        if media_pioggia_giorno < 1.0:
-            print(f"[{data_str}] Analisi saltata: Atmosfera stabile o assenza di pioggia nelle ENS (Media: {media_pioggia_giorno:.1f} mm).")
+        if media_pioggia_giorno <= 0.0:
+            print(f"[{data_str}] Analisi saltata: Assenza totale di segnale precipitativo nelle ENS (Media: {media_pioggia_giorno:.1f} mm).")
             continue
 
         # 2. RICERCA ORA DI PICCO (Max CAPE tra le 12 e le 20)
