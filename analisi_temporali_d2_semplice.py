@@ -160,7 +160,7 @@ def interpella_gemini(report_tecnico, giorno_str, stima_grandine):
         prompt = f"""
         Sei un meteorologo esperto in convezione profonda (livello ESTOFEX).
         Il tuo compito è analizzare i seguenti parametri calcolati per {giorno_str} a Rivoli (TO) nel momento di picco, 
-        e fornire un bollettino sul TIPO DI TEMPORALE atteso; senza tecnicismi.
+        e fornire un bollettino sul TIPO DI TEMPORALE atteso; senza tecnicismi (non menzionare shear, cape, flusso discendente, ascendente e tutti gli altri parametri utili in sede previsionale).
         
         NOTA FONDAMENTALE: Non devi dare l'innesco del temporale per certo. Usa formule come "In caso di innesco", "Qualora si attivasse la convezione" o simili, e poi prosegui con l'analisi fenomenologica.
 
