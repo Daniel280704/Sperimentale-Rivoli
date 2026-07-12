@@ -437,8 +437,8 @@ def invia_messaggio_testo_telegram(testo: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Meteogrammi ad alta risoluzione a layout dinamico")
-    parser.add_argument("--lat", type=float, default=LAT_RIVOLI, help="Latitudine")
-    parser.add_argument("--lon", type=float, default=LON_RIVOLI, help="Longitudine")
+    parser.add_argument("--lat", type=float, default=LAT, help="Latitudine")
+    parser.add_argument("--lon", type=float, default=LON, help="Longitudine")
     parser.add_argument("--modello", type=str, choices=["ch1", "ch2", "d2", "arome", "icon2i"], default="d2",
                          help="Modello (ch1, ch2, d2 per Ensemble, arome, icon2i per Deterministico)")
     parser.add_argument("--giorni", type=int, default=None, help="Giorni di previsione")
