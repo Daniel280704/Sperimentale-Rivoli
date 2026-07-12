@@ -28,7 +28,6 @@ def descrivi_velocita_vento(kmh):
     else: return "vento burrascoso"
 
 def calcola_disagio_caldo(t_aria, dew_point):
-    """Calcola il disagio estivo restituendo le etichette formattate con emoji"""
     if t_aria >= 36 or dew_point >= 24: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
     elif t_aria >= 34 or dew_point >= 22: return "(disagio forte 🔴)"
     elif t_aria >= 30 or dew_point >= 20: return "(disagio marcato 🟠)"
@@ -36,7 +35,6 @@ def calcola_disagio_caldo(t_aria, dew_point):
     return "(assenza di disagio 🟢)"
 
 def calcola_disagio_freddo(windchill):
-    """Valuta il disagio da freddo restituendo le etichette formattate con emoji"""
     if windchill < -10: return "(disagio estremo da freddo 🥶)"
     elif windchill < -5: return "(disagio forte da freddo 🔵)"
     elif windchill < 0: return "(disagio marcato da freddo 🧊)"
@@ -49,13 +47,11 @@ def media_lista(lista):
     return int(round(sum(valori_validi) / len(valori_validi)))
 
 def conta_superamenti(lista, soglia):
-    """Calcola il numero assoluto di membri ENS che superano una certa soglia"""
     valori_validi = [v for v in lista if v is not None]
     if not valori_validi: return 0
     return sum(1 for v in valori_validi if v >= soglia)
 
 def percentuale_superamento(lista, soglia):
-    """Calcola la percentuale di membri ENS che superano una certa soglia"""
     valori_validi = [v for v in lista if v is not None]
     if not valori_validi: return 0
     return (sum(1 for v in valori_validi if v >= soglia) / len(valori_validi)) * 100
@@ -71,10 +67,10 @@ def interpella_gemini(dati_testuali, oggi_str, domani_str):
     REGOLE FERREE (PENA IL FALLIMENTO):
     1. TITOLO: Inizia ESATTAMENTE con: **Aggiornamento meteo di {oggi_str}**
     2. STRUTTURA: Scrivi esattamente due paragrafi: il primo per la giornata odierna, il secondo per domani.
-    3. DIVIETO ASSOLUTO DI ELENCARE GLI ORARI: NON elencare MAI le temperature ora per ora (è severamente vietato scrivere cose come "alle 8 ci saranno 25 gradi, alle 9 ci saranno 26 gradi...").
+    3. DIVIETO ASSOLUTO DI ELENCARE GLI ORARI: NON elencare MAI le temperature ora per ora.
     4. SINTESI DISCORSIVA: Sintetizza l'evoluzione usando fasi del giorno ("in mattinata", "nelle ore centrali", "nel pomeriggio", "in serata"). Usa la cronistoria fornita solo per capire l'andamento del cielo e dei fenomeni meteo, ma raccontali in modo narrativo.
-    5. TEMPERATURE DA CITARE: Cita solo la temperatura minima (solitamente mattutina) e la temperatura massima prevista.
-    6. DISAGIO TERMICO: Quando citi la temperatura massima, affianca ESATTAMENTE la dicitura sul disagio che trovi nei dati (es. inserisci testualmente "(disagio marcato 🟠)").
+    5. TEMPERATURE DA CITARE: Cita solo la temperatura minima e la temperatura massima prevista.
+    6. DISAGIO TERMICO: Quando citi la temperatura massima, affianca ESATTAMENTE la dicitura sul disagio che trovi nei dati.
     7. TERMINOLOGIA CIELO: Quando descrivi la nuvolosità, DEVI integrare nel testo ESATTAMENTE le stesse diciture fornite dai dati (es. "sereno", "poco nuvoloso", "parzialmente nuvoloso", "irregolarmente o molto nuvoloso", "molto nuvoloso o coperto"). Evita sinonimi liberi.
     
     ESEMPIO DI STILE DA IMITARE ALLA PERFEZIONE:
@@ -112,7 +108,6 @@ def main():
         
         ch2_disponibile = True
         try:
-            # Dati ensemble CH2 (Precipitazioni)
             dati_eps_ch2 = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
                 "latitude": LAT, "longitude": LON,
                 "hourly": "precipitation",
@@ -120,7 +115,6 @@ def main():
                 "timezone": "Europe/Rome", "forecast_days": 2
             }, timeout=10).json()
             
-            # Dati deterministici CH2 (Soleggiamento)
             dati_det_ch2 = requests.get("https://api.open-meteo.com/v1/forecast", params={
                 "latitude": LAT, "longitude": LON,
                 "hourly": "sunshine_duration",
@@ -146,7 +140,6 @@ def main():
     sunrise_str = dati_det.get('daily', {}).get('sunrise', [])
     sunset_str = dati_det.get('daily', {}).get('sunset', [])
 
-    # --- Pre-calcolo medie di soleggiamento (Mattino e Pomeriggio) ---
     medie_sole = {0: {'mattino': [], 'pomeriggio': []}, 1: {'mattino': [], 'pomeriggio': []}}
     for i in range(len(orari)):
         ora_dt = datetime.fromisoformat(orari[i])
@@ -156,7 +149,6 @@ def main():
         alba_piu_2 = alba + timedelta(hours=2)
         tramonto_meno_2 = tramonto - timedelta(hours=2)
         
-        # Uso preferenziale CH2 per il soleggiamento (con fallback su D2)
         if ch2_disponibile and h_det_ch2.get('sunshine_duration'):
             sun_sec = h_det_ch2['sunshine_duration'][i]
         else:
@@ -164,19 +156,15 @@ def main():
             
         sun_minuti = (sun_sec or 0) / 60
         
-        # Mattino: da 2h dopo l'alba fino alle 12:59
         if alba_piu_2 <= ora_dt and ora_dt.hour < 13:
             medie_sole[giorno_idx]['mattino'].append(sun_minuti)
-        # Pomeriggio: dalle 13:00 fino a 2h prima del tramonto
         elif ora_dt.hour >= 13 and ora_dt <= tramonto_meno_2:
             medie_sole[giorno_idx]['pomeriggio'].append(sun_minuti)
 
-    # Calcoliamo le medie effettive per ciascun blocco
     for g in [0, 1]:
         for p in ['mattino', 'pomeriggio']:
             lst = medie_sole[g][p]
             medie_sole[g][p] = sum(lst) / len(lst) if lst else 0
-    # -----------------------------------------------------------------
 
     sintesi_oggi = []
     sintesi_domani = []
@@ -207,11 +195,9 @@ def main():
         w_dir = h_det.get('wind_direction_10m', [])[i]
         w_dir_str = gradi_a_direzione(w_dir)
         
-        # Estrazione Precipitazioni Membri ENS
         prec_eps_d2_membri = [h_eps_d2[k][i] for k in h_eps_d2 if k.startswith('precipitation_member')]
         prec_eps_ch2_membri = [h_eps_ch2[k][i] for k in h_eps_ch2 if k.startswith('precipitation_member')] if ch2_disponibile else []
         
-        # Calcolo percentuali e conteggi su ICON-D2
         pct_d2_3mm = percentuale_superamento(prec_eps_d2_membri, 3.0)
         pct_d2_5mm = percentuale_superamento(prec_eps_d2_membri, 5.0)
         num_d2_1mm = conta_superamenti(prec_eps_d2_membri, 1.0)
@@ -223,7 +209,6 @@ def main():
             pct_ch2_5mm = percentuale_superamento(prec_eps_ch2_membri, 5.0)
             num_ch2_1mm = conta_superamenti(prec_eps_ch2_membri, 1.0)
             
-            # Matrice Dinamica di Tolleranza Incrociata (D2 e CH2 online)
             if (pct_d2_5mm >= 10) or (pct_ch2_5mm >= 10):
                 instabilita = "spiccata instabilità"
             elif ((pct_d2_3mm >= 10) and (num_ch2_1mm > 0)) or ((pct_ch2_3mm >= 10) and (num_d2_1mm > 0)):
@@ -231,7 +216,6 @@ def main():
             elif (num_d2_1mm >= 1) and (num_ch2_1mm >= 1):
                 instabilita = "possibile instabilità"
         else:
-            # Fallback se ICON-CH2 è offline: Soglie rialzate e ottimizzate per singolo modello (D2)
             if pct_d2_5mm >= 10:      
                 instabilita = "spiccata instabilità"
             elif pct_d2_3mm >= 15:    
@@ -261,17 +245,22 @@ def main():
                 else: tipo_prec = "rovesci"
 
         vento_evento = ""
-        if dew_point_prev is not None:
-            crollo_dew = dew_point_prev - dew_media >= 2
-            if w_dir_str in ['NW', 'N', 'W'] and w_gst_media > 25 and crollo_dew:
-                vento_evento = "improvviso rinforzo per probabile Föhn"
-            elif w_dir_str in ['E', 'NE', 'SE'] and w_gst_media > 20 and not crollo_dew:
-                vento_evento = "ventilazione umida orientale"
-                
-        if not inverno and instabilita == "assente" and w_gst_media > 40:
-            vento_evento = "improvvise raffiche (possibile outflow da temporali vicini)"
-        elif not inverno and instabilita != "assente" and w_gst_media > 40:
-            vento_evento = f"raffiche che accompagnano il {tipo_prec}"
+        if w_spd_media >= 15 or w_gst_media > 30:
+            if dew_point_prev is not None:
+                crollo_dew = dew_point_prev - dew_media >= 2
+                if w_dir_str in ['NW', 'N', 'W'] and w_gst_media > 25 and crollo_dew:
+                    vento_evento = "improvviso rinforzo per probabile Föhn"
+                elif w_dir_str in ['E', 'NE', 'SE'] and w_gst_media > 20 and not crollo_dew:
+                    vento_evento = "ventilazione umida orientale"
+            
+            if not inverno and w_gst_media > 30:
+                if instabilita != "assente":
+                    vento_evento = "raffiche dovute agli outflow temporaleschi"
+                else:
+                    vento_evento = "outflow di temporali vicini"
+                    
+            if not vento_evento and w_spd_media >= 15:
+                vento_evento = "rinforzo della ventilazione"
             
         dew_point_prev = dew_media
 
@@ -282,7 +271,6 @@ def main():
         
         cielo = ""
         if alba_piu_2 <= ora_dt <= tramonto_meno_2:
-            # Selezione della media corretta (mattino o pomeriggio) in base all'ora
             if ora_dt.hour < 13:
                 avg_sun = medie_sole[giorno_idx]['mattino']
             else:
