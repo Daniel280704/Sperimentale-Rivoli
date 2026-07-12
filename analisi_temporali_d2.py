@@ -2,7 +2,7 @@
 """
 Analizzatore Termodinamico e Cinematico per Rischio Temporali (Stile ESTOFEX)
 Modello: ICON-D2 (Copertura 48h)
-- Integrazione Filtro Precipitazioni ENS (Media Spaghi > 0.05mm)
+- Integrazione Filtro Precipitazioni Incrociato D2/CH2 (Probabilità > 10% su 1mm)
 - Calcolo esplicito dimensione grandine
 - Integrazione col nuovo SDK google.genai
 - Focus fenomenologico: analisi condizionata all'innesco
@@ -22,54 +22,84 @@ from google.genai import types
 LAT = 45.0734521841099
 LON = 7.543386286825349
 
-def get_pioggia_ens_media():
-    """Scarica i 20 membri EPS di D2 e calcola la media precipitativa giornaliera"""
-    url = "https://ensemble-api.open-meteo.com/v1/ensemble"
-    params = {
-        "latitude": LAT,
-        "longitude": LON,
-        "models": "icon_d2",
-        "hourly": "precipitation",
-        "timezone": "Europe/Rome",
-        "forecast_days": 2
-    }
-    
+def get_innesco_incrociato_giornaliero():
+    """
+    Scarica D2 e CH2 ENS. Ritorna un dizionario con i giorni in cui
+    c'è concordanza (almeno 10% di probabilità > 1mm su entrambi i modelli in una finestra estesa).
+    """
     try:
-        resp = requests.get(url, params=params, timeout=30)
-        resp.raise_for_status()
-        hourly = resp.json()['hourly']
-        
-        # Estraiamo le chiavi di tutti i membri EPS
-        membri = [k for k in hourly.keys() if "precipitation_member" in k]
-        if not membri:
-            return {}
+        # Fetch Ensemble ICON-D2
+        dati_d2 = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
+            "latitude": LAT, "longitude": LON,
+            "hourly": "precipitation",
+            "models": "icon_d2",
+            "timezone": "Europe/Rome", "forecast_days": 2
+        }, timeout=30).json()
 
-        pioggia_giornaliera = {}
-        for i, time_str in enumerate(hourly['time']):
+        # Fetch Ensemble ICON-CH2
+        dati_ch2 = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
+            "latitude": LAT, "longitude": LON,
+            "hourly": "precipitation",
+            "models": "icon_ch2",
+            "timezone": "Europe/Rome", "forecast_days": 2
+        }, timeout=30).json()
+        
+        hourly_d2 = dati_d2.get('hourly', {})
+        hourly_ch2 = dati_ch2.get('hourly', {})
+        orari = hourly_d2.get('time', [])
+        
+        def estrai_membri(hourly_data, indice_ora):
+            valori = []
+            for key, lst in hourly_data.items():
+                if key.startswith("precipitation_member"):
+                    if indice_ora < len(lst) and lst[indice_ora] is not None:
+                        valori.append(lst[indice_ora])
+            return valori
+
+        def pct_over_1mm(vals):
+            if not vals: return 0 
+            return (sum(1 for v in vals if v >= 1.0) / len(vals)) * 100
+
+        # Precalcoliamo le probabilità orarie per velocizzare la finestra estesa
+        p1_d2_all = []
+        p1_ch_all = []
+        for i in range(len(orari)):
+            prec_d2 = estrai_membri(hourly_d2, i)
+            prec_ch2 = estrai_membri(hourly_ch2, i)
+            p1_d2_all.append(pct_over_1mm(prec_d2))
+            p1_ch_all.append(pct_over_1mm(prec_ch2))
+
+        inneschi_giornalieri = {}
+        
+        for i, time_str in enumerate(orari):
             dt = datetime.fromisoformat(time_str)
-            giorno = dt.strftime("%Y-%m-%d")
+            data_str = dt.strftime("%Y-%m-%d")
             
-            if giorno not in pioggia_giornaliera:
-                pioggia_giornaliera[giorno] = []
+            if data_str not in inneschi_giornalieri:
+                inneschi_giornalieri[data_str] = False
                 
-            somma_ora = 0
-            valori_validi = 0
-            for m in membri:
-                val = hourly[m][i]
-                if val is not None:
-                    somma_ora += val
-                    valori_validi += 1
+            # Se per questo giorno abbiamo già trovato un innesco valido, passiamo oltre
+            if inneschi_giornalieri[data_str]:
+                continue
+                
+            # Finestra temporale sfasata (+/- 3 ore di tolleranza)
+            start_j = max(0, i - 3)
+            end_j = min(len(orari), i + 4)
             
-            media_ora = somma_ora / valori_validi if valori_validi > 0 else 0
-            pioggia_giornaliera[giorno].append(media_ora)
+            ch2_support_for_d2 = any(p1_ch_all[j] >= 10 for j in range(start_j, end_j))
+            d2_support_for_ch = any(p1_d2_all[j] >= 10 for j in range(start_j, end_j))
             
-        # Sommiamo le medie orarie per avere l'accumulo medio totale del giorno
-        for g in pioggia_giornaliera:
-            pioggia_giornaliera[g] = sum(pioggia_giornaliera[g])
+            valido = False
+            if p1_d2_all[i] >= 10 and ch2_support_for_d2: valido = True
+            if p1_ch_all[i] >= 10 and d2_support_for_ch: valido = True
+            if not any(p1_ch_all) and p1_d2_all[i] >= 10: valido = True # Fallback se CH2 è offline
             
-        return pioggia_giornaliera
+            if valido:
+                inneschi_giornalieri[data_str] = True
+
+        return inneschi_giornalieri
     except Exception as e:
-        print(f"⚠️ Errore nel calcolo delle ENS Pioggia: {e}")
+        print(f"⚠️ Errore nel calcolo incrociato ENS Pioggia D2/CH2: {e}")
         return {}
 
 
@@ -193,8 +223,8 @@ def interpella_gemini(report_tecnico, giorno_str, stima_grandine):
         return f"Errore AI: {e}"
 
 def main():
-    print("Analisi in corso: scaricamento medie ensemble precipitazioni...")
-    pioggia_ens = get_pioggia_ens_media()
+    print("Analisi in corso: calcolo incrociato innesco D2/CH2...")
+    innesco_giornaliero_valido = get_innesco_incrociato_giornaliero()
     
     print("Scaricamento profili termodinamici ICON-D2...")
     hourly = fetch_dati_convezione()
@@ -213,11 +243,10 @@ def main():
 
     for data_str, indici in giorni.items():
         
-        # 1. CONTROLLO PIOGGIA: Filtro per rumore di fondo matematico.
-        # Deve esserci almeno una vera traccia (es. 0.05mm medi significa almeno 1mm su 1 spago).
-        media_pioggia_giorno = pioggia_ens.get(data_str, 0)
-        if media_pioggia_giorno < 0.05:
-            print(f"[{data_str}] Analisi saltata: Assenza o rumore di fondo precipitativo nelle ENS (Media: {media_pioggia_giorno:.3f} mm).")
+        # 1. CONTROLLO PIOGGIA: Controllo incrociato validato dalla funzione D2/CH2
+        is_pioggia_valida = innesco_giornaliero_valido.get(data_str, False)
+        if not is_pioggia_valida:
+            print(f"[{data_str}] Analisi saltata: I modelli Ensemble non raggiungono il 10% concorde per l'innesco (>1mm).")
             continue
 
         # 2. RICERCA ORA DI PICCO (Max CAPE tra le 12 e le 20)
@@ -234,7 +263,7 @@ def main():
         
         # Se c'è pioggia ma zero energia termica, saltiamo l'analisi temporalesca
         if max_cape < 300 or idx_max_cape == -1:
-            print(f"[{data_str}] Analisi saltata: Prevista pioggia ma debole instabilità (CAPE < 300 J/kg).")
+            print(f"[{data_str}] Analisi saltata: Prevista pioggia ma debole instabilità convettiva (CAPE < 300 J/kg).")
             continue
 
         innesco_trovato = True
