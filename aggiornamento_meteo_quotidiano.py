@@ -263,11 +263,11 @@ def main():
             else:
                 avg_sun = medie_sole[giorno_idx]['pomeriggio']
                 
-            if avg_sun < 5: cielo = "molto nuvoloso o coperto"
-            elif avg_sun <= 15: cielo = "irregolarmente o molto nuvoloso"
-            elif avg_sun <= 30: cielo = "parzialmente o irregolarmente nuvoloso"
-            elif avg_sun <= 45: cielo = "parzialmente nuvoloso"
-            elif avg_sun <= 55: cielo = "poco nuvoloso"
+            if avg_sun < 10: cielo = "molto nuvoloso o coperto"
+            elif avg_sun <= 25: cielo = "irregolarmente o molto nuvoloso"
+            elif avg_sun <= 40: cielo = "parzialmente o irregolarmente nuvoloso"
+            elif avg_sun <= 50: cielo = "parzialmente nuvoloso"
+            elif avg_sun <= 57: cielo = "poco nuvoloso"
             else: cielo = "sereno"
 
         nebbia = ""
