@@ -1,4 +1,4 @@
-yaml_content = """name: Analisi temporali approfondita
+name: Analisi temporali approfondita
 
 on:
   schedule:
