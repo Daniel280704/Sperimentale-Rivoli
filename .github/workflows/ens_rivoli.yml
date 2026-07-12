@@ -1,4 +1,4 @@
-name: Bot Meteo Automazione
+name: ENS Rivoli
 
 on:
   schedule:
@@ -31,11 +31,11 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python meteogramma_rivoli_gemini_13_bot.py --modello ch1
-          python meteogramma_rivoli_gemini_13_bot.py --modello ch2
-          python meteogramma_rivoli_gemini_13_bot.py --modello d2
-          python meteogramma_rivoli_gemini_13_bot.py --modello arome
-          python meteogramma_rivoli_gemini_13_bot.py --modello icon2i
+          python ens_rivoli.py --modello ch1
+          python ens_rivoli.py --modello ch2
+          python ens_rivoli.py --modello d2
+          python ens_rivoli.py --modello arome
+          python ens_rivoli.py --modello icon2i
 
       # QUESTO PASSAGGIO SALVA L'IMPRONTA DIGITALE PER LA VOLTA DOPO
       - name: Salva stato modelli per anti-spam
