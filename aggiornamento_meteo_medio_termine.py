@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 
 import google.generativeai as genai
 
-LAT = 45.07347491421504
-LON = 7.543461388723449
+LAT = 45.073443
+LON = 7.543472
 
 GIORNI_IT = {0: "lunedì", 1: "martedì", 2: "mercoledì", 3: "giovedì", 4: "venerdì", 5: "sabato", 6: "domenica"}
 MESI_IT = {1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 
@@ -40,7 +40,6 @@ def media_lista(lista):
     return int(round(sum(valori_validi) / len(valori_validi)))
 
 def percentuale_superamento(lista, soglia):
-    """Calcola la percentuale di membri ENS che superano una certa soglia"""
     valori_validi = [v for v in lista if v is not None]
     if not valori_validi: return 0
     return (sum(1 for v in valori_validi if v >= soglia) / len(valori_validi)) * 100
@@ -59,11 +58,11 @@ def interpella_gemini(dati_testuali, oggi_str, giorni_str):
        - Il primo paragrafo dedicato a {giorni_str[2]}
        - Il secondo paragrafo dedicato a {giorni_str[3]}
        - Il terzo paragrafo dedicato a {giorni_str[4]}
-    3. DIVIETO ASSOLUTO DI ELENCARE GLI ORARI: NON elencare MAI le temperature ora per ora (è severamente vietato scrivere cose come "alle 8 ci saranno 25 gradi, alle 9 ci saranno 26 gradi...").
+    3. DIVIETO ASSOLUTO DI ELENCARE GLI ORARI: NON elencare MAI le temperature ora per ora.
     4. SINTESI DISCORSIVA: Sintetizza l'evoluzione usando fasi del giorno ("in mattinata", "nelle ore centrali", "nel pomeriggio", "in serata"). Usa la cronistoria fornita solo per capire l'andamento del cielo e dei fenomeni meteo, ma raccontali in modo narrativo.
-    5. TEMPERATURE DA CITARE: Cita solo la temperatura minima (solitamente mattutina) e la temperatura massima prevista.
-    6. DISAGIO TERMICO: Quando citi la temperatura massima, affianca ESATTAMENTE la dicitura sul disagio che trovi nei dati (es. inserisci testualmente "(disagio marcato 🟠)").
-    7. TERMINOLOGIA CIELO: Quando descrivi la nuvolosità, DEVI integrare nel testo ESATTAMENTE le stesse diciture fornite dai dati (es. "sereno", "poco nuvoloso", "parzialmente nuvoloso", "irregolarmente o molto nuvoloso", "molto nuvoloso o coperto"). Evita sinonimi liberi.
+    5. TEMPERATURE DA CITARE: Cita solo la temperatura minima e la temperatura massima prevista.
+    6. DISAGIO TERMICO: Quando citi la temperatura massima, affianca ESATTAMENTE la dicitura sul disagio che trovi nei dati.
+    7. TERMINOLOGIA CIELO: Quando descrivi la nuvolosità, DEVI integrare nel testo ESATTAMENTE le stesse diciture fornite dai dati. Evita sinonimi liberi.
     
     ESEMPIO DI STILE DA IMITARE ALLA PERFEZIONE:
     "La giornata di {giorni_str[2]} si aprirà con condizioni di stabilità atmosferica. Le temperature minime si assesteranno sui 19°C. Durante le ore di luce il cielo si manterrà in prevalenza sereno, favorendo un ampio soleggiamento che porterà la massima a 33°C (disagio marcato 🟠). Nel tardo pomeriggio avremo un cielo parzialmente nuvoloso, ma senza fenomeni di rilievo."
@@ -83,7 +82,6 @@ def main():
     estate = mese_corrente in [5, 6, 7, 8, 9, 10]
     
     dt_oggi = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    # Impostiamo le date esatte: da 00:00 di dopodomani (giorno 3 da oggi)
     dt_inizio_estrazione = dt_oggi + timedelta(days=2)
     dt_fine_estrazione = dt_oggi + timedelta(days=4)
 
@@ -110,7 +108,7 @@ def main():
         
         # SISTEMA DI FAIL-SAFE: Controllo copertura oraria
         orari_temp = dati_det.get('hourly', {}).get('time', [])
-        target_dt = dt_fine_estrazione + timedelta(hours=20) # Ora limite: 20:00 del giorno 5
+        target_dt = dt_fine_estrazione + timedelta(hours=20)
         usa_seamless = False
         
         if not orari_temp:
@@ -167,7 +165,6 @@ def main():
         ora_dt = datetime.fromisoformat(t_str)
         giorno_idx = (ora_dt.date() - dt_oggi.date()).days
         
-        # Tronca l'ultimo giorno (il quinto da oggi, indice 4) alle ore 20:59
         if giorno_idx == 4 and ora_dt.hour > 20:
             continue
             
@@ -176,7 +173,6 @@ def main():
         if giorno_idx not in medie_sole:
             continue
             
-        # I giorni in sunrise_str partono da dt_inizio_estrazione (quindi indice 0 corrisponde a giorno_idx 2)
         alba = datetime.fromisoformat(sunrise_str[giorno_idx - 2])
         tramonto = datetime.fromisoformat(sunset_str[giorno_idx - 2])
         alba_piu_2 = alba + timedelta(hours=2)
@@ -190,7 +186,6 @@ def main():
         elif ora_dt.hour >= 13 and ora_dt <= tramonto_meno_2:
             medie_sole[giorno_idx]['pomeriggio'].append(sun_minuti)
 
-    # Pre-calcola le medie di sole per mattino e pomeriggio
     for g in medie_sole:
         for p in ['mattino', 'pomeriggio']:
             lst = medie_sole[g][p]
@@ -232,7 +227,6 @@ def main():
         w_dir = h_det.get('wind_direction_10m', [])[i] if i < len(h_det.get('wind_direction_10m', [])) else None
         w_dir_str = gradi_a_direzione(w_dir)
         
-        # INSTABILITÀ: Logica basata esclusivamente su un singolo modello EPS
         prec_eps_membri = [h_eps[k][i] for k in h_eps if k.startswith('precipitation_member')]
         
         pct_1mm = percentuale_superamento(prec_eps_membri, 1.0)
@@ -273,17 +267,22 @@ def main():
                 else: tipo_prec = "rovesci"
 
         vento_evento = ""
-        if dew_point_prev is not None:
-            crollo_dew = dew_point_prev - dew_media >= 2
-            if w_dir_str in ['NW', 'N', 'W'] and w_gst_media > 25 and crollo_dew:
-                vento_evento = "improvviso rinforzo per probabile Föhn"
-            elif w_dir_str in ['E', 'NE', 'SE'] and w_gst_media > 20 and not crollo_dew:
-                vento_evento = "ventilazione umida orientale"
-                
-        if not inverno and instabilita == "assente" and w_gst_media > 40:
-            vento_evento = "improvvise raffiche (possibile outflow da temporali vicini)"
-        elif not inverno and instabilita != "assente" and w_gst_media > 40:
-            vento_evento = f"raffiche che accompagnano il {tipo_prec}"
+        if w_spd_media >= 15 or w_gst_media > 30:
+            if dew_point_prev is not None:
+                crollo_dew = dew_point_prev - dew_media >= 2
+                if w_dir_str in ['NW', 'N', 'W'] and w_gst_media > 25 and crollo_dew:
+                    vento_evento = "improvviso rinforzo per probabile Föhn"
+                elif w_dir_str in ['E', 'NE', 'SE'] and w_gst_media > 20 and not crollo_dew:
+                    vento_evento = "ventilazione umida orientale"
+            
+            if not inverno and w_gst_media > 30:
+                if instabilita != "assente":
+                    vento_evento = "raffiche dovute agli outflow temporaleschi"
+                else:
+                    vento_evento = "outflow di temporali vicini"
+                    
+            if not vento_evento and w_spd_media >= 15:
+                vento_evento = "rinforzo della ventilazione"
             
         dew_point_prev = dew_media
 
