@@ -18,8 +18,6 @@ LON = 7.543472
 def interpella_gemini(dati_meteo, info_giornaliere):
     api_key = os.getenv("GEMINI_API_KEY")
     genai.configure(api_key=api_key)
-    # Nota: Ho lasciato il modello che avevi inserito, ma se dovesse dare errore 
-    # ti consiglio di usare 'models/gemini-1.5-flash' o 'models/gemini-1.5-pro'
     model = genai.GenerativeModel('models/gemini-3-flash-preview')    
 
     oggi_str = datetime.now().strftime("%A %d %B")
@@ -71,20 +69,29 @@ def interpella_gemini(dati_meteo, info_giornaliere):
         return f"Errore AI: {e}"
 
 def calcola_prob_pioggia(prec_d2, prec_ch2):
-    if not prec_d2 or not prec_ch2:
+    # Se entrambi i modelli sono vuoti, non c'è pioggia prevista
+    if not prec_d2 and not prec_ch2:
         return "Assente"
 
-    # Funzione interna per calcolare la percentuale di scenari che vedono la soglia
     def pct(vals, th):
+        if not vals: return 0 # Protezione se l'array è vuoto
         return (sum(1 for v in vals if v >= th) / len(vals)) * 100
 
-    p1_d2, p3_d2, p5_d2 = pct(prec_d2, 1), pct(prec_d2, 3), pct(prec_d2, 5)
-    p1_ch, p3_ch, p5_ch = pct(prec_ch2, 1), pct(prec_ch2, 3), pct(prec_ch2, 5)
+    # Calcoliamo le probabilità solo se i modelli hanno restituito dati
+    p1_d2 = pct(prec_d2, 1) if prec_d2 else 0
+    p3_d2 = pct(prec_d2, 3) if prec_d2 else 0
+    p5_d2 = pct(prec_d2, 5) if prec_d2 else 0
+    
+    p1_ch = pct(prec_ch2, 1) if prec_ch2 else 0
+    p3_ch = pct(prec_ch2, 3) if prec_ch2 else 0
+    p5_ch = pct(prec_ch2, 5) if prec_ch2 else 0
 
-    # REQUISITO BASE: Devono essere concordi almeno sul 10% per la soglia di 1mm
-    if p1_d2 >= 10 and p1_ch >= 10:
-        
-        # Una volta concordi, per le intensità basta che uno dei due modelli veda la percentuale
+    # REQUISITO BASE: Devono essere concordi almeno sul 10% per la soglia di 1mm.
+    # Se ICON-CH2 manca totalmente dall'API, ci basiamo solo su ICON-D2 per non rompere lo script
+    valido_d2 = p1_d2 >= 10
+    valido_ch2 = p1_ch >= 10 if prec_ch2 else True # Se CH2 manca, lo ignoriamo considerandolo "concorde" per default
+
+    if valido_d2 and valido_ch2:
         max5 = max(p5_d2, p5_ch)
         max3 = max(p3_d2, p3_ch)
         max1 = max(p1_d2, p1_ch)
@@ -94,7 +101,6 @@ def calcola_prob_pioggia(prec_d2, prec_ch2):
             if p >= 20: return "Probabile"
             return "Minima possibilità"
 
-        # Valutiamo dall'intensità maggiore a quella minore
         if max5 >= 10:
             return f"{livello(max5)} pioggia intensa o instabilità diffusa"
         if max3 >= 10:
@@ -105,7 +111,6 @@ def calcola_prob_pioggia(prec_d2, prec_ch2):
     return "Assente"
 
 def estrai_membri(hourly_data, prefisso_variabile, indice_ora):
-    # Raccoglie dinamicamente tutti i membri disponibili per una certa variabile a una certa ora
     valori = []
     for key, lst in hourly_data.items():
         if key.startswith(prefisso_variabile):
@@ -114,7 +119,6 @@ def estrai_membri(hourly_data, prefisso_variabile, indice_ora):
     return valori
 
 def main():
-    # 1. Fetch Dati Deterministici D2 (include Temperature per la media a 3 vie)
     dati_det = requests.get("https://api.open-meteo.com/v1/forecast", params={
         "latitude": LAT, "longitude": LON,
         "hourly": "temperature_2m,relative_humidity_2m,dew_point_2m",
@@ -122,7 +126,6 @@ def main():
         "timezone": "Europe/Rome", "forecast_days": 2
     }).json()
 
-    # 2. Fetch Ensemble ICON-D2
     dati_eps_d2 = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
         "latitude": LAT, "longitude": LON,
         "hourly": "temperature_2m,precipitation,wind_speed_10m",
@@ -130,7 +133,6 @@ def main():
         "timezone": "Europe/Rome", "forecast_days": 2
     }).json()
 
-    # 3. Fetch Ensemble ICON-CH2
     dati_eps_ch2 = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
         "latitude": LAT, "longitude": LON,
         "hourly": "temperature_2m,precipitation,wind_speed_10m",
@@ -148,13 +150,18 @@ def main():
     temp_oggi = []
     temp_domani = []
 
+    # Estrazione sicura liste deterministiche
+    t_det_list = hourly_det.get('temperature_2m', [])
+    ur_list = hourly_det.get('relative_humidity_2m', [])
+    dew_list = hourly_det.get('dew_point_2m', [])
+
     for i in range(48): 
         if i >= len(orari): break
 
         # Estrazione membri temperatura
         t_d2_mem = estrai_membri(hourly_d2, "temperature_2m_member", i)
         t_ch2_mem = estrai_membri(hourly_ch2, "temperature_2m_member", i)
-        t_det = hourly_det.get('temperature_2m', [0]*48)[i]
+        t_det = t_det_list[i] if i < len(t_det_list) else None
 
         # Estrazione membri vento e precipitazioni
         w_d2_mem = estrai_membri(hourly_d2, "wind_speed_10m_member", i)
@@ -163,22 +170,24 @@ def main():
         prec_ch2 = estrai_membri(hourly_ch2, "precipitation_member", i)
 
         # ---------------------------------------------------------
-        # CALCOLI MEDIE
+        # CALCOLI MEDIE DINAMICHE (Soluzione Bug "Zero")
         # ---------------------------------------------------------
-        avg_t_d2 = sum(t_d2_mem) / len(t_d2_mem) if t_d2_mem else 0
-        avg_t_ch2 = sum(t_ch2_mem) / len(t_ch2_mem) if t_ch2_mem else 0
+        valori_temp = []
+        if t_d2_mem: valori_temp.append(sum(t_d2_mem) / len(t_d2_mem))
+        if t_ch2_mem: valori_temp.append(sum(t_ch2_mem) / len(t_ch2_mem))
+        if t_det is not None: valori_temp.append(t_det)
         
-        # Temperatura finale: media arrotondata all'intero (D2 EPS, CH2 EPS, D2 Det)
-        temp_finale = round((avg_t_d2 + avg_t_ch2 + t_det) / 3)
+        # Ora divide solo per il numero di modelli che hanno effettivamente risposto
+        temp_finale = round(sum(valori_temp) / len(valori_temp)) if valori_temp else 0
         
-        # Vento finale: media delle due medie ensemble
-        avg_w_d2 = sum(w_d2_mem) / len(w_d2_mem) if w_d2_mem else 0
-        avg_w_ch2 = sum(w_ch2_mem) / len(w_ch2_mem) if w_ch2_mem else 0
-        vento_finale = round((avg_w_d2 + avg_w_ch2) / 2)
+        valori_vento = []
+        if w_d2_mem: valori_vento.append(sum(w_d2_mem) / len(w_d2_mem))
+        if w_ch2_mem: valori_vento.append(sum(w_ch2_mem) / len(w_ch2_mem))
+        vento_finale = round(sum(valori_vento) / len(valori_vento)) if valori_vento else 0
         
         # Dati deterministici per umidità
-        ur = hourly_det.get('relative_humidity_2m', [0]*48)[i]
-        dew = hourly_det.get('dew_point_2m', [0]*48)[i]
+        ur = ur_list[i] if i < len(ur_list) else 0
+        dew = dew_list[i] if i < len(dew_list) else 0
 
         # Archiviazione temperature per calcolo Min/Max giornaliero
         if i < 24:
@@ -193,7 +202,6 @@ def main():
 
         report += f"{orari[i][-5:]} | {temp_finale}°C | {ur}% | {dew}°C | {prob} | {vento_finale} km/h\n"
 
-    # Preparazione stringa Min/Max passata a Gemini
     min_oggi, max_oggi = (min(temp_oggi), max(temp_oggi)) if temp_oggi else ("N/A", "N/A")
     min_domani, max_domani = (min(temp_domani), max(temp_domani)) if temp_domani else ("N/A", "N/A")
     
@@ -202,7 +210,6 @@ def main():
     {(datetime.now() + timedelta(days=1)).strftime("%A %d %B")}: Min {min_domani}°C, Max {max_domani}°C
     """
 
-    # Invia a Gemini
     bollettino = interpella_gemini(report, info_giornaliere)
     
     token = os.getenv("TELEGRAM_TOKEN")
