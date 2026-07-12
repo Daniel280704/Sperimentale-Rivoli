@@ -51,7 +51,7 @@ def media_lista(lista):
 def interpella_gemini(dati_testuali, oggi_str, domani_str):
     api_key = os.getenv("GEMINI_API_KEY")
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('models/gemini-1.5-flash')
+    model = genai.GenerativeModel('models/gemini-3.5-flash')
     
     prompt = f"""
     Sei un meteorologo professionista. Il tuo compito è scrivere un bollettino discorsivo, fluido ed elegante per Rivoli (TO) partendo dalla sintesi oraria fornita.
