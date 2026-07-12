@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-\"\"\"
-Analizzatore Termodinamico e Cinematico Avanzato per Rischio Temporali
-*** VERSIONE DI TEST - TRIGGER FORZATO ***
-- Il controllo Ensemble è disattivato.
-- L'analisi viene eseguita forzatamente per la fascia oraria 17:00 - 20:00 del giorno corrente.
-- Output ripristinato su Telegram.
-\"\"\"
 
 import os
 import sys
@@ -103,7 +96,7 @@ def interpella_gemini(report_tecnico, giorno_str):
     \"\"\"
 
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-3.5-flash',
         contents=prompt,
         config=types.GenerateContentConfig(temperature=0.3)
     )
