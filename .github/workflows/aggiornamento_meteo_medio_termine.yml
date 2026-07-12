@@ -1,4 +1,4 @@
-name: aggiornamento meteo a medio termine
+name: Aggiornamento meteo a medio termine
 
 on:
   schedule:
