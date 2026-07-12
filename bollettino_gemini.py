@@ -18,7 +18,6 @@ LON = 7.543472
 def gradi_a_direzione(gradi):
     if gradi is None: return "N/A"
     dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N']
-    # Divide il cerchio di 360° in 8 spicchi da 45°
     ix = int(round(gradi / 45.0))
     return dirs[ix % 8]
 
@@ -34,41 +33,40 @@ def interpella_gemini(dati_meteo, info_giornaliere):
     Sei un meteorologo professionista. Scrivi un bollettino meteo discorsivo per Rivoli (TO) per le prossime 48 ore.
     Oggi è {oggi_str}, domani sarà {domani_str}.
     
-    RIFERIMENTI UFFICIALI (Usa questi valori per le temperature min/max):
+    RIFERIMENTI UFFICIALI (Usa questi valori testualmente per le temperature min/max e disagio):
     {info_giornaliere}
 
     REGOLE DI SCRITTURA (BOLLETTINO AVANZATO):
     1. NON usare elenchi puntati. Scrivi paragrafi fluidi e professionali.
-    2. Usa le temperature min/max fornite nei riferimenti ufficiali come base della narrazione.
+    2. Usa le temperature min/max fornite nei RIFERIMENTI UFFICIALI come base della narrazione.
     
     REGOLA PRECIPITAZIONI E PROBABILITÀ (CRITICA):
-    3. Analizza la colonna 'Probabilità'. Se indica 'Assente', IGNORA TOTALMENTE il tema della pioggia. Se invece è presente:
+    3. Analizza 'Probabilità'. Se indica 'Assente', IGNORA TOTALMENTE il tema della pioggia.
        - STAGIONALITÀ: Tra MARZO e OTTOBRE usa "rovesci" o "temporali". Tra NOVEMBRE e FEBBRAIO usa "piogge" o "precipitazioni".
-       - FORMATO ORARIO: Raggruppa gli orari (es. "tra le 16 e le 21"). NON esprimere le ore come 16:00, usa solo il numero intero.
-       - Riporta il livello di rischio in base a quanto indicato in tabella.
+       - FORMATO ORARIO: Raggruppa gli orari (es. "tra le 16 e le 21"). Usa solo il numero intero.
     
     REGOLA NEVE E INVERNO (INVERSIONI E WET BULB):
-    4. Se sono previste precipitazioni e fa freddo, analizza il profilo verticale:
-       - INVERSIONE TERMICA E GELICIDIO: Se al suolo la temperatura è rigida (es. <= 1°C) ma in ALMENO UNA quota (T_925, T_900, T_850, T_800) la temperatura è positiva, c'è un'inversione termica. NON prevedere neve, avvisa del grave rischio di pioggia congelantesi (gelicidio).
-       - BULBO UMIDO (Wet_Bulb): Se l'aria è positiva ma il Wet_Bulb è <= 0°C, annuncia che le precipitazioni intense potrebbero far crollare la quota neve.
-       - NEVE: Se Z.Termico basso, T su tutte le quote <= 0°C e Wet Bulb <= 0°C, avvisa della probabilità di neve.
+    4. Se sono previste precipitazioni e fa freddo:
+       - INVERSIONE/GELICIDIO: Se T suolo <= 1°C ma in ALMENO UNA quota (T_925, T_900, T_850, T_800) la T è > 0°C, c'è inversione termica. NON prevedere neve, avvisa del grave rischio di pioggia congelantesi (gelicidio).
+       - BULBO UMIDO: Se l'aria è > 0°C ma Wet_Bulb <= 0°C, annuncia rischio neve per crollo termico da rovesciamento.
+       - NEVE: Se Z.Termico basso, T su tutte le quote <= 0°C e Wet Bulb <= 0°C, avvisa probabilità di neve.
        
     REGOLA NEBBIA E GELATE NOTTURNE:
-    5. NEBBIA: Se l'UR% > 95% (quindi T e Dew Point quasi coincidono) e il vento è calmo (< 5 km/h), segnala possibili foschie o banchi di nebbia.
-       GELATE: In inverno, se di notte/primo mattino la T_Media scende a <= 0°C e l'umidità è medio-alta, avvisa esplicitamente del rischio di gelate o brinate al suolo.
+    5. NEBBIA: Se l'UR% > 95% e il vento è calmo (< 5 km/h), segnala possibili foschie o nebbia.
+       GELATE: In inverno, se di notte/mattino la T_Media scende a <= 0°C e l'umidità è medio-alta, avvisa rischio gelate/brina.
        
-    REGOLA VENTO: FÖHN E CORRENTI ORIENTALI:
-    6. FÖHN: Se noti raffiche (Raffiche) vivaci (> 30 km/h) con direzione Ovest o Nord-Ovest (W/NW) accompagnate da un "crollo" dell'umidità (UR%) e del Dew Point, annuncia in modo discorsivo l'ingresso del Föhn (vento di ricaduta secco e mite).
-       EST: Se il vento soffia in modo sostenuto da Est (E/NE/SE) e l'umidità è alta, segnala flussi umidi orientali (che a ridosso delle Alpi portano nuvolosità da stau o freddo continentale).
+    REGOLA VENTO E RAFFICHE:
+    6. REGOLA DEL SILENZIO: Se nella colonna 'Raffiche' NESSUN valore raggiunge o supera i 30 km/h, è ASSOLUTAMENTE VIETATO menzionare il vento o la ventilazione nel bollettino.
+       FÖHN/EST: Parlane SOLO se le raffiche superano i 30 km/h (es. Föhn da W/NW con crollo UR% e Dew, oppure flussi umidi da E).
     
     REGOLE DI DISAGIO TERMICO (BIOMETEOROLOGIA):
-    7. AFA/CALDO: Inserisci il livello (Disagio Moderato o Forte Disagio) ESCLUSIVAMENTE tra parentesi dopo la T max, senza spiegarne i motivi.
-       WIND CHILL: Se (T_Media <= 8°C e Vento >= 15 km/h), spiega che il vento renderà il freddo pungente.
+    7. AFA/CALDO: NON devi calcolare nulla. Il livello di disagio è già presente nei RIFERIMENTI UFFICIALI in alto. Limitati a ricopiare il testo (es. "raggiungendo i 33°C (Disagio Moderato)") senza mai spiegare il motivo nel bollettino.
+       WIND CHILL: Se T_Media <= 8°C e Vento >= 15 km/h, spiega che il vento renderà il freddo pungente.
     
     DIVIETO SUI TERMINI TECNICI:
-    8. È severamente VIETATO menzionare i nomi delle colonne della tabella (come "T_Media", "Wet_Bulb", "T_925hPa", "Dew").
+    8. È severamente VIETATO menzionare i nomi delle colonne (come "Wet_Bulb", "T_925hPa", "Dew").
     
-    DATI ANALITICI ORARI (Ora | T_Media | UR% | Dew | Prob | Vento | Raffiche | Dir_Vento | Z.Termico | Wet_Bulb | T_925hPa | T_900hPa | T_850hPa | T_800hPa):
+    DATI ANALITICI ORARI (Ora | T | UR% | Dew | Prob | Vento | Raffiche | Dir | Z.Termico | Wet_B | T_925 | T_900 | T_850 | T_800):
     {dati_meteo}
     """
 
@@ -87,7 +85,6 @@ def estrai_membri(hourly_data, prefisso_variabile, indice_ora):
     return valori
 
 def main():
-    # Aggiunti parametri per Vento (Raffiche e Direzione) dalla corsa deterministica
     dati_det = requests.get("https://api.open-meteo.com/v1/forecast", params={
         "latitude": LAT, "longitude": LON,
         "hourly": "temperature_2m,relative_humidity_2m,dew_point_2m,freezinglevel_height,wet_bulb_temperature_2m,temperature_925hPa,temperature_900hPa,temperature_850hPa,temperature_800hPa,wind_direction_10m,wind_gusts_10m",
@@ -114,10 +111,13 @@ def main():
     hourly_ch2 = dati_eps_ch2.get('hourly', {})
     orari = hourly_det.get('time', [])
     
-    report = "Ora | T_Media | UR% | Dew | Prob | Vento | Raffiche | Dir_Vento | Z.Termico | Wet_Bulb | T_925 | T_900 | T_850 | T_800\n"
+    report = "Ora | T | UR% | Dew | Prob | Vento | Raffiche | Dir | Z.Termico | Wet_B | T_925 | T_900 | T_850 | T_800\n"
     
     temp_oggi = []
     temp_domani = []
+    
+    disagio_oggi_score = 0
+    disagio_domani_score = 0
 
     t_det_list = hourly_det.get('temperature_2m', [])
     ur_list = hourly_det.get('relative_humidity_2m', [])
@@ -128,8 +128,6 @@ def main():
     t900_list = hourly_det.get('temperature_900hPa', [])
     t850_list = hourly_det.get('temperature_850hPa', [])
     t800_list = hourly_det.get('temperature_800hPa', [])
-    
-    # Nuove liste vento
     wd_list = hourly_det.get('wind_direction_10m', [])
     wg_list = hourly_det.get('wind_gusts_10m', [])
 
@@ -184,15 +182,23 @@ def main():
         t850_val = t850_list[i] if i < len(t850_list) else "N/A"
         t800_val = t800_list[i] if i < len(t800_list) else "N/A"
         
-        # Estrazione e conversione direzione e raffiche
         wd_val = wd_list[i] if i < len(wd_list) else None
         dir_str = gradi_a_direzione(wd_val)
         wg_val = round(wg_list[i]) if i < len(wg_list) else 0
 
+        # Calcolo Disagio Termico in Python
+        d_score = 0
+        if (temp_finale >= 32 and dew >= 20) or (temp_finale >= 30 and dew >= 24):
+            d_score = 2
+        elif (temp_finale >= 28 and dew >= 15) or (temp_finale >= 25 and dew >= 20):
+            d_score = 1
+
         if i < 24:
             temp_oggi.append(temp_finale)
+            disagio_oggi_score = max(disagio_oggi_score, d_score)
         else:
             temp_domani.append(temp_finale)
+            disagio_domani_score = max(disagio_domani_score, d_score)
 
         start_j = max(0, i - 3)
         end_j = min(48, i + 4)
@@ -222,12 +228,20 @@ def main():
 
         report += f"{orari[i][-5:]} | {temp_finale}°C | {ur}% | {dew}°C | {prob} | {vento_finale} km/h | {wg_val} km/h | {dir_str} | {z_term_val}m | {wet_bulb_val}°C | {t925_val}°C | {t900_val}°C | {t850_val}°C | {t800_val}°C\n"
 
+    def formatta_disagio(score):
+        if score == 2: return " (Forte Disagio)"
+        if score == 1: return " (Disagio Moderato)"
+        return ""
+
     min_oggi, max_oggi = (min(temp_oggi), max(temp_oggi)) if temp_oggi else ("N/A", "N/A")
     min_domani, max_domani = (min(temp_domani), max(temp_domani)) if temp_domani else ("N/A", "N/A")
     
+    str_disagio_oggi = formatta_disagio(disagio_oggi_score)
+    str_disagio_domani = formatta_disagio(disagio_domani_score)
+
     info_giornaliere = f"""
-    {datetime.now().strftime("%A %d %B")}: Min {min_oggi}°C, Max {max_oggi}°C
-    {(datetime.now() + timedelta(days=1)).strftime("%A %d %B")}: Min {min_domani}°C, Max {max_domani}°C
+    {datetime.now().strftime("%A %d %B")}: Min {min_oggi}°C, Max {max_oggi}°C{str_disagio_oggi}
+    {(datetime.now() + timedelta(days=1)).strftime("%A %d %B")}: Min {min_domani}°C, Max {max_domani}°C{str_disagio_domani}
     """
 
     bollettino = interpella_gemini(report, info_giornaliere)
