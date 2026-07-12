@@ -88,7 +88,7 @@ def main():
     dt_fine_estrazione = dt_oggi + timedelta(days=4)
 
     try:
-        # Richiesta a Open-Meteo per ICON-CH2 (deterministico - MeteoSwiss)
+        # TENTATIVO 1: Richiesta a ICON-CH2 (MeteoSwiss)
         dati_det = requests.get("https://api.open-meteo.com/v1/forecast", params={
             "latitude": LAT, "longitude": LON,
             "hourly": "wind_direction_10m,cape,sunshine_duration,apparent_temperature,temperature_1000hPa,temperature_975hPa,temperature_950hPa,temperature_925hPa,temperature_900hPa,temperature_850hPa,temperature_800hPa",
@@ -99,7 +99,6 @@ def main():
             "end_date": dt_fine_estrazione.strftime("%Y-%m-%d")
         }, timeout=10).json()
 
-        # Richiesta a Open-Meteo per ICON-CH2 (Ensemble - MeteoSwiss)
         dati_eps = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
             "latitude": LAT, "longitude": LON,
             "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,dew_point_2m",
@@ -108,6 +107,40 @@ def main():
             "start_date": dt_inizio_estrazione.strftime("%Y-%m-%d"),
             "end_date": dt_fine_estrazione.strftime("%Y-%m-%d")
         }, timeout=10).json()
+        
+        # SISTEMA DI FAIL-SAFE: Controllo copertura oraria
+        orari_temp = dati_det.get('hourly', {}).get('time', [])
+        target_dt = dt_fine_estrazione + timedelta(hours=20) # Ora limite: 20:00 del giorno 5
+        usa_seamless = False
+        
+        if not orari_temp:
+            usa_seamless = True
+        else:
+            ultimo_orario = datetime.fromisoformat(orari_temp[-1])
+            if ultimo_orario < target_dt:
+                usa_seamless = True
+                
+        # TENTATIVO 2 (FALLBACK): Se CH2 è monco, usa ICON-SEAMLESS
+        if usa_seamless:
+            print("⚠️ ICON-CH2 non copre fino alle 20:00 del quinto giorno (o è offline). Fallback su ICON-SEAMLESS in corso...")
+            dati_det = requests.get("https://api.open-meteo.com/v1/forecast", params={
+                "latitude": LAT, "longitude": LON,
+                "hourly": "wind_direction_10m,cape,sunshine_duration,apparent_temperature,temperature_1000hPa,temperature_975hPa,temperature_950hPa,temperature_925hPa,temperature_900hPa,temperature_850hPa,temperature_800hPa",
+                "daily": "sunrise,sunset",
+                "models": "icon_seamless",
+                "timezone": "Europe/Rome", 
+                "start_date": dt_inizio_estrazione.strftime("%Y-%m-%d"),
+                "end_date": dt_fine_estrazione.strftime("%Y-%m-%d")
+            }, timeout=10).json()
+
+            dati_eps = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
+                "latitude": LAT, "longitude": LON,
+                "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,dew_point_2m",
+                "models": "icon_seamless",
+                "timezone": "Europe/Rome",
+                "start_date": dt_inizio_estrazione.strftime("%Y-%m-%d"),
+                "end_date": dt_fine_estrazione.strftime("%Y-%m-%d")
+            }, timeout=10).json()
 
     except Exception as e:
         print(f"Errore fatale nel recupero dati Open-Meteo: {e}")
@@ -118,7 +151,7 @@ def main():
     orari = h_det.get('time', [])
     
     if not orari:
-        print("Errore: Nessun dato restituito dai server per ICON-CH2.")
+        print("Errore: Nessun dato restituito dai server per il modello selezionato.")
         return
 
     sunrise_str = dati_det.get('daily', {}).get('sunrise', [])
@@ -199,7 +232,7 @@ def main():
         w_dir = h_det.get('wind_direction_10m', [])[i] if i < len(h_det.get('wind_direction_10m', [])) else None
         w_dir_str = gradi_a_direzione(w_dir)
         
-        # INSTABILITÀ: Logica basata esclusivamente su ICON-CH2 (Monomodello)
+        # INSTABILITÀ: Logica basata esclusivamente su un singolo modello EPS
         prec_eps_membri = [h_eps[k][i] for k in h_eps if k.startswith('precipitation_member')]
         
         pct_1mm = percentuale_superamento(prec_eps_membri, 1.0)
