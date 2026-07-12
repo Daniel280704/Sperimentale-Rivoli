@@ -49,13 +49,13 @@ def fetch_dati_convezione_d2():
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": LAT, "longitude": LON, "models": "icon_d2",
-        "hourly": "temperature_2m,dew_point_2m,cape,cin,lifted_index,freezing_level_height,"
+        "hourly": "temperature_2m,dew_point_2m,cape,lifted_index,freezing_level_height,"
                   "wind_speed_10m,wind_direction_10m,"
                   "temperature_850hPa,temperature_500hPa,"
                   "geopotential_height_850hPa,geopotential_height_500hPa,"
                   "wind_speed_850hPa,wind_direction_850hPa,"
                   "wind_speed_500hPa,wind_direction_500hPa,"
-                  "relative_humidity_700hPa,surface_pressure",
+                  "relative_humidity_700hPa",
         "timezone": "Europe/Rome", "forecast_days": 3
     }
     resp = requests.get(url, params=params, timeout=30)
