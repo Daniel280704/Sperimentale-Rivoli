@@ -274,10 +274,7 @@ def main():
                     vento_evento = "ventilazione umida orientale"
             
             if not inverno and w_gst_media > 30:
-                if instabilita != "assente":
-                    vento_evento = "raffiche dovute agli outflow temporaleschi"
-                else:
-                    vento_evento = "outflow di temporali vicini"
+                vento_evento = "rischio di raffiche di vento improvvise"
                     
             if not vento_evento and w_spd_media >= 15:
                 vento_evento = "rinforzo della ventilazione"
@@ -316,7 +313,14 @@ def main():
 
         record = f"Ore {ora_solare}: T={t_media}°C."
         if cielo: record += f" Cielo {cielo}."
-        if instabilita != "assente": record += f" Si segnala {instabilita} con possibilità di {tipo_prec} (da confermare)."
+        
+        if instabilita != "assente":
+            if vento_evento == "rischio di raffiche di vento improvvise":
+                record += f" Si segnala {instabilita} con possibilità di {tipo_prec} (da confermare), con annesso rischio di raffiche di vento improvvise."
+                vento_evento = "" # Azzerato per non ripeterlo
+            else:
+                record += f" Si segnala {instabilita} con possibilità di {tipo_prec} (da confermare)."
+                
         if vento_evento: record += f" {vento_evento}."
         if nebbia: record += f" {nebbia}."
         
