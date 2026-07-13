@@ -22,18 +22,47 @@ def gradi_a_direzione(gradi):
     return dirs[int(round(gradi / 45.0)) % 8]
 
 def calcola_disagio_caldo(t_aria, dew_point):
-    if t_aria >= 36 or dew_point >= 24: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
-    elif t_aria >= 34 or dew_point >= 22: return "(disagio forte 🔴)"
-    elif t_aria >= 30 or dew_point >= 20: return "(disagio marcato 🟠)"
-    elif t_aria >= 27 or dew_point >= 18: return "(disagio lieve 🟡)"
-    return "(assenza di disagio 🟢)"
+    if t_aria >= 40 and dew_point >= 15: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
+    elif t_aria >= 38 and dew_point >= 18: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
+    elif t_aria >= 36 and dew_point >= 20: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
+    elif t_aria >= 34 and dew_point >= 22: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
+    elif t_aria >= 32 and dew_point >= 24: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
+    elif t_aria >= 30 and dew_point >= 25: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
+    elif t_aria >= 28 and dew_point >= 26: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
+    
+    elif t_aria >= 38 and dew_point >= 12: return "(disagio forte 🔴)"
+    elif t_aria >= 36 and dew_point >= 15: return "(disagio forte 🔴)"
+    elif t_aria >= 34 and dew_point >= 18: return "(disagio forte 🔴)"
+    elif t_aria >= 32 and dew_point >= 20: return "(disagio forte 🔴)"
+    elif t_aria >= 30 and dew_point >= 22: return "(disagio forte 🔴)"
+    elif t_aria >= 28 and dew_point >= 24: return "(disagio forte 🔴)"
+    elif t_aria >= 26 and dew_point >= 25: return "(disagio forte 🔴)"
+    
+    elif t_aria >= 36 and dew_point >= 10: return "(disagio marcato 🟠)"
+    elif t_aria >= 34 and dew_point >= 13: return "(disagio marcato 🟠)"
+    elif t_aria >= 32 and dew_point >= 16: return "(disagio marcato 🟠)"
+    elif t_aria >= 30 and dew_point >= 18: return "(disagio marcato 🟠)"
+    elif t_aria >= 28 and dew_point >= 20: return "(disagio marcato 🟠)"
+    elif t_aria >= 26 and dew_point >= 22: return "(disagio marcato 🟠)"
+    elif t_aria >= 24 and dew_point >= 24: return "(disagio marcato 🟠)"
+    
+    elif t_aria >= 32 and dew_point >= 8: return "(disagio lieve 🟡)"
+    elif t_aria >= 30 and dew_point >= 11: return "(disagio lieve 🟡)"
+    elif t_aria >= 28 and dew_point >= 13: return "(disagio lieve 🟡)"
+    elif t_aria >= 26 and dew_point >= 15: return "(disagio lieve 🟡)"
+    elif t_aria >= 24 and dew_point >= 17: return "(disagio lieve 🟡)"
+    elif t_aria >= 22 and dew_point >= 19: return "(disagio lieve 🟡)"
+    
+    else:
+        return "(nessun disagio o caldo tollerabile)"
 
 def calcola_disagio_freddo(windchill):
-    if windchill < -10: return "(disagio estremo da freddo 🥶)"
-    elif windchill < -5: return "(disagio forte da freddo 🔵)"
-    elif windchill < 0: return "(disagio marcato da freddo 🧊)"
-    elif windchill < 5: return "(disagio lieve da freddo ❄️)"
-    return "(assenza di disagio 🟢)"
+    if windchill < -40: return "(disagio estremo da freddo 🥶)"
+    elif windchill < -25: return "(disagio forte da freddo 🥶)"
+    elif windchill < -10: return "(disagio marcato da freddo 🥶)"
+    elif windchill < 0: return "(disagio lieve da freddo 🥶)"
+    else:
+        return "(nessun disagio o freddo tollerabile)"
 
 def media_lista(lista):
     valori_validi = [v for v in lista if v is not None]
@@ -86,7 +115,7 @@ def interpella_gemini(dati_testuali, oggi_str, giorni_str):
 
 def main():
     mese_corrente = datetime.now().month
-    inverno = mese_corrente in [11, 12, 1, 2, 3]
+    inverno = mese_corrente in [11, 12, 1, 2, 3, 4]
     estate = mese_corrente in [5, 6, 7, 8, 9, 10]
     
     # --- BLOCCO SEMAFORO: CONTROLLO INIZIALE ---
@@ -117,7 +146,7 @@ def main():
 
         dati_eps = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
             "latitude": LAT, "longitude": LON,
-            "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,dew_point_2m",
+            "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,dew_point_2m,apparent_temperature",
             "models": "meteoswiss_icon_ch2_ensemble",
             "timezone": "Europe/Rome",
             "start_date": dt_inizio_estrazione.strftime("%Y-%m-%d"),
@@ -149,7 +178,7 @@ def main():
 
             dati_eps = requests.get("https://ensemble-api.open-meteo.com/v1/ensemble", params={
                 "latitude": LAT, "longitude": LON,
-                "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,dew_point_2m",
+                "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,dew_point_2m,apparent_temperature",
                 "models": "icon_seamless",
                 "timezone": "Europe/Rome",
                 "start_date": dt_inizio_estrazione.strftime("%Y-%m-%d"),
@@ -213,12 +242,22 @@ def main():
     dew_max = {2: -100, 3: -100, 4: -100}
     windchill_min = {2: 100, 3: 100, 4: 100}
     
+    # Recupero dati pregressi (per l'ora precedente alla prima di estrazione)
     dew_point_prev = None
+    w_gst_prev = None
+    ur_prev = None
+    
     if len(orari) > 0 and indici_validi:
         primo_idx = indici_validi[0]
         if primo_idx > 0:
             dew_membri_prev = [h_eps[k][primo_idx - 1] for k in h_eps if k.startswith('dew_point_2m_member')]
             dew_point_prev = media_lista(dew_membri_prev)
+            
+            gst_membri_prev = [h_eps[k][primo_idx - 1] for k in h_eps if k.startswith('wind_gusts_10m_member')]
+            w_gst_prev = media_lista(gst_membri_prev)
+            
+            ur_membri_prev = [h_eps[k][primo_idx - 1] for k in h_eps if k.startswith('relative_humidity_2m_member')]
+            ur_prev = media_lista(ur_membri_prev)
 
     for i in indici_validi:
         ora_dt = datetime.fromisoformat(orari[i])
@@ -230,6 +269,9 @@ def main():
         
         dew_membri = [h_eps[k][i] for k in h_eps if k.startswith('dew_point_2m_member')]
         dew_media = media_lista(dew_membri)
+
+        app_membri = [h_eps[k][i] for k in h_eps if k.startswith('apparent_temperature_member')]
+        app_media = media_lista(app_membri)
         
         ur_membri = [h_eps[k][i] for k in h_eps if k.startswith('relative_humidity_2m_member')]
         ur_media = media_lista(ur_membri)
@@ -255,22 +297,14 @@ def main():
 
         if num_1mm >= 3:
             instabilita = "possibile instabilità"
-            if pct_5mm >= 75:
-                probabilita = 95
-            elif pct_5mm >= 50:
-                probabilita = 80
-            elif pct_5mm >= 25:
-                probabilita = 70
-            elif pct_3mm >= 50:
-                probabilita = 60
-            elif pct_3mm >= 25:
-                probabilita = 50
-            elif pct_1mm >= 50:
-                probabilita = 40
-            elif pct_1mm >= 25:
-                probabilita = 30
-            else:
-                probabilita = 15
+            if pct_5mm >= 75: probabilita = 95
+            elif pct_5mm >= 50: probabilita = 80
+            elif pct_5mm >= 25: probabilita = 70
+            elif pct_3mm >= 50: probabilita = 60
+            elif pct_3mm >= 25: probabilita = 50
+            elif pct_1mm >= 50: probabilita = 40
+            elif pct_1mm >= 25: probabilita = 30
+            else: probabilita = 15
 
         tipo_prec = ""
         if instabilita != "assente":
@@ -304,21 +338,42 @@ def main():
         elif w_gst_media >= 25: desc_raffiche = "deboli"
 
         vento_evento = ""
-        if w_spd_media >= 15 or w_gst_media >= 25:
-            if dew_point_prev is not None:
-                crollo_dew = dew_point_prev - dew_media >= 2
-                if w_dir_str in ['NW', 'N', 'W'] and w_gst_media > 25 and crollo_dew:
+        if instabilita == "assente":
+            if dew_point_prev is not None and w_gst_prev is not None and ur_prev is not None:
+                aumento_vento = (w_gst_media - w_gst_prev) >= 20
+                crollo_dew = (dew_point_prev - dew_media) >= 5
+                aumento_ur = (ur_media - ur_prev) >= 5
+                
+                is_fohn = w_dir_str in ['NW', 'N', 'W'] and aumento_vento and crollo_dew
+                is_oriente = w_dir_str in ['E', 'NE', 'SE'] and aumento_ur
+                
+                if is_fohn:
                     vento_evento = "improvviso rinforzo per probabile Föhn"
-                elif w_dir_str in ['E', 'NE', 'SE'] and w_gst_media > 20 and not crollo_dew:
+                elif is_oriente:
                     vento_evento = "ventilazione umida orientale"
-            
-            if not vento_evento and not inverno and desc_raffiche:
-                vento_evento = f"rischio di {desc_raffiche} raffiche di vento improvvise"
-                    
-            if not vento_evento and w_spd_media >= 15:
-                vento_evento = "rinforzo della ventilazione"
-            
+                elif w_gst_media >= 25 or w_spd_media >= 15:
+                    if estate:
+                        vento_evento = f"rinforzi della ventilazione dovuti al probabile transito di temporali nelle vicinanze"
+                    else:
+                        if desc_raffiche:
+                            vento_evento = f"rischio di {desc_raffiche} raffiche di vento"
+                        else:
+                            vento_evento = "rinforzo della ventilazione"
+            else:
+                # Caso primissima ora se i dati antecedenti mancano
+                if w_gst_media >= 25 or w_spd_media >= 15:
+                    if estate:
+                        vento_evento = f"rinforzi della ventilazione dovuti al probabile transito di temporali nelle vicinanze"
+                    else:
+                        if desc_raffiche:
+                            vento_evento = f"rischio di {desc_raffiche} raffiche di vento"
+                        else:
+                            vento_evento = "rinforzo della ventilazione"
+                            
+        # Aggiornamento valori precedenti per l'iterazione successiva
         dew_point_prev = dew_media
+        w_gst_prev = w_gst_media
+        ur_prev = ur_media
 
         alba = datetime.fromisoformat(sunrise_str[giorno_idx - 2])
         tramonto = datetime.fromisoformat(sunset_str[giorno_idx - 2])
@@ -345,10 +400,10 @@ def main():
 
         t_min[giorno_idx] = min(t_min[giorno_idx], t_media)
         t_max[giorno_idx] = max(t_max[giorno_idx], t_media)
-        if estate: dew_max[giorno_idx] = max(dew_max[giorno_idx], dew_media)
+        if estate: 
+            dew_max[giorno_idx] = max(dew_max[giorno_idx], dew_media)
         elif inverno:
-            app_t = h_det.get('apparent_temperature', [])[i] if i < len(h_det.get('apparent_temperature', [])) else t_media
-            if app_t is not None: windchill_min[giorno_idx] = min(windchill_min[giorno_idx], app_t)
+            windchill_min[giorno_idx] = min(windchill_min[giorno_idx], app_media)
 
         record = f"Ore {ora_solare}: T={t_media}°C."
         if cielo: record += f" Cielo {cielo}."
@@ -356,8 +411,6 @@ def main():
         if instabilita != "assente":
             str_instabilita = f"{instabilita} ({probabilita}%)"
             record += f" Si segnala {str_instabilita} con possibilità di {tipo_prec}."
-            if "raffiche" in vento_evento:
-                vento_evento = ""
                 
         if vento_evento: record += f" {vento_evento}."
         if nebbia: record += f" {nebbia}."
@@ -398,10 +451,8 @@ def main():
                       data={"chat_id": chat_id, "text": bollettino_finale, "parse_mode": "Markdown"})
         if risposta_tg.status_code == 200:
             print("Bollettino a medio termine inviato con successo!")
-            # --- BLOCCO SEMAFORO: AGGIORNAMENTO DOPO IL SUCCESSO ---
             with open(FILE_LOCK, "w") as f:
                 f.write(oggi_str_lock)
-            # --------------------------------------------------------
         else:
             print(f"Errore Telegram: {risposta_tg.text}")
     else:
