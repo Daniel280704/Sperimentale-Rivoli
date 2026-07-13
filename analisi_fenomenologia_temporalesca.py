@@ -220,7 +220,7 @@ def main():
     hourly = fetch_dati_convezione_d2()
     
     # Usiamo il tag HTML <b> coerentemente con il prompt pulito di Groq
-    messaggio_telegram = "🌩 <b>ANALISI SETUP CONVETTIVO CONDIZIONALE</b>\n\n"
+    messaggio_telegram = "🌩 <b>AVVISO PER POSSIBILI TEMPORALI</b>\n\n"
     inviato_almeno_uno = False
 
     for data_str, indici_ore in finestre_attive.items():
