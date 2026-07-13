@@ -104,7 +104,7 @@ def interpella_groq(dati_testuali, oggi_str, domani_str):
         
     client = Groq(api_key=api_key)
     
-   prompt = f"""
+    prompt = f"""
     Sei un meteorologo professionista, profondo conoscitore del microclima del Piemonte e in particolare della pianura e della fascia pedemontana di Rivoli (TO). Il tuo compito è redigere un bollettino meteo quotidiano discorsivo, elegante, autorevole e fluido, analizzando i dati orari e gli estremi termici che ti vengono forniti.
 
     LINEE GUIDA PER L'ANALISI METEOROLOGICA (RAGIONA DA ESPERTO):
