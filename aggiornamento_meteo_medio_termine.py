@@ -133,7 +133,7 @@ def interpella_gemini(dati_testuali, oggi_str, giorni_str):
     """
     try:
         response = client.models.generate_content(
-            model='gemini-flash-lite-latest',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.25)
         )
