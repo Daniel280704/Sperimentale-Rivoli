@@ -4,10 +4,7 @@ import sys
 import time
 import requests
 from datetime import datetime, timedelta
-
-# NUOVO SDK GEMINI
-from google import genai
-from google.genai import types
+from groq import Groq
 
 LAT = 45.073443
 LON = 7.543472
@@ -100,9 +97,12 @@ def percentuale_superamento(lista, soglia):
     if not valori_validi: return 0
     return (sum(1 for v in valori_validi if v >= soglia) / len(valori_validi)) * 100
 
-def interpella_gemini(dati_testuali, oggi_str, giorni_str):
-    api_key = os.getenv("GEMINI_API_KEY")
-    client = genai.Client(api_key=api_key)
+def interpella_groq(dati_testuali, oggi_str, giorni_str):
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return "Errore: GROQ_API_KEY non trovata."
+        
+    client = Groq(api_key=api_key)
     
     prompt = f"""
     Sei un meteorologo professionista. Il tuo compito è scrivere un bollettino discorsivo, fluido ed elegante per Rivoli (TO) a MEDIO TERMINE, partendo dalla sintesi oraria fornita.
@@ -117,7 +117,7 @@ def interpella_gemini(dati_testuali, oggi_str, giorni_str):
     7. FLUIDITÀ E DIVIETO DI RIPETIZIONI (IMPORTANTE): Usa le diciture sulla nuvolosità fornite in modo NATURALE. È SEVERAMENTE VIETATO ripetere la parola "cielo" a distanza ravvicinata (es. NON scrivere "il cielo si presenterà come cielo sereno", scrivi "il cielo si manterrà sereno" o "avremo cielo sereno"). Il testo deve scorrere in modo logico, fluido e senza cacofonie.
     8. PROBABILISMO SULLE PRECIPITAZIONI ESTIVE: In caso di instabilità, usa un tono probabilistico (es. "un aumento dell'instabilità con possibili rovesci (60%)").
     9. GESTIONE MALTEMPO INVERNALE/AUTUNNALE: Se nei dati trovi "Perturbazione in transito", NON usare la parola "instabilità". Descrivi le fasce orarie in cui piove/nevica aggregandole, indica la loro intensità (debole, moderata, forte) e indica SEMPRE l'orario del picco massimo in mm/h, citandolo nel testo.
-    10. DIVIETO ASSOLUTO DI FORMATTAZIONE MARKDOWN: Telegram va in crash con caratteri spaiati. NON USARE MAI asterischi (*), underscore (_) o formattazioni simili. Usa solo testo pulito e il tag HTML <b> per il titolo.
+    10. DIVIETO ASSOLUTO DI FORMATTAZIONE MARKDOWN: Telegram va in crash con caratteri spaiati. NON USARE MAI asterischi (*), underscore (_) o formattazioni simili in nessun punto del testo. Usa solo testo pulito e il tag HTML <b> per il titolo.
     
     ESEMPIO DI STILE INVERNALE DA IMITARE:
     <b>Aggiornamento meteo a medio termine di {oggi_str}</b>
@@ -132,14 +132,19 @@ def interpella_gemini(dati_testuali, oggi_str, giorni_str):
     {dati_testuali}
     """
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.25)
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.25,
         )
-        return response.text
+        return chat_completion.choices[0].message.content
     except Exception as e:
-        return f"Errore AI: {e}"
+        return f"Errore AI Groq: {e}"
 
 def main():
     mese_corrente = datetime.now().month
@@ -481,13 +486,12 @@ def main():
         testo_per_ia += "CRONISTORIA DEGLI EVENTI:\n"
         testo_per_ia += "\n".join(sintesi[g]) + "\n\n"
 
-    bollettino_finale = interpella_gemini(testo_per_ia, oggi_str, giorni_str)
+    bollettino_finale = interpella_groq(testo_per_ia, oggi_str, giorni_str)
     
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if token and chat_id:
-        # PARSE_MODE MODIFICATO IN HTML PER PREVENIRE CRASH DI FORMATTAZIONE
         risposta_tg = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
                       data={"chat_id": chat_id, "text": bollettino_finale, "parse_mode": "HTML"})
         if risposta_tg.status_code == 200:
