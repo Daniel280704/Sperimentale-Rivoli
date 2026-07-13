@@ -14,9 +14,7 @@ import math
 import requests
 from datetime import datetime, timedelta
 
-# SDK Ufficiale di Gemini
-from google import genai
-from google.genai import types
+from groq import Groq
 
 # Coordinate - Rivoli (TO)
 LAT = 45.0734521841099
@@ -168,11 +166,11 @@ def stima_grandine_python(cape, dls, lapse_rate, zero_termico):
         return "PICCOLA (< 1.5 cm) - Rapido collasso della colonna precipitante."
     return "Assente o di piccole dimensioni."
 
-def interpella_gemini(report_tecnico, giorno_str):
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key: return "Errore: Manca la chiave API di Gemini."
+def interpella_groq(report_tecnico, giorno_str):
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key: return "Errore: Manca la chiave API di Groq."
         
-    client = genai.Client(api_key=api_key)
+    client = Groq(api_key=api_key)
     
     prompt = f"""
     Sei un meteorologo esperto in dinamiche convettive. Il tuo compito è stilare un bollettino di analisi 
@@ -190,12 +188,15 @@ def interpella_gemini(report_tecnico, giorno_str):
     6. Non superare i due/tre paragrafi ben scorrevoli. Non dare raccomandazioni di protezione civile.
     """
 
-    response = client.models.generate_content(
-        model='gemini-3.5-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.3)
-    )
-    return response.text
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.3-70b-versatile",
+            temperature=0.25,
+        )
+        return chat_completion.choices[0].message.content
+    except Exception as e:
+        return f"Errore AI Groq: {e}"
 
 def main():
     print("Analisi in corso: ricerca inneschi da scenari Ensemble D2/CH2...")
@@ -285,8 +286,8 @@ def main():
         """
         
         giorno_formattato = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
-        print(f"[{giorno_formattato}] Elaborazione responso diagnostico tramite Gemini...")
-        responso = interpella_gemini(report_dati, giorno_formattato)
+        print(f"[{giorno_formattato}] Elaborazione responso diagnostico tramite Groq...")
+        responso = interpella_groq(report_dati, giorno_formattato)
         
         messaggio_telegram += f"📅 **Target: {giorno_formattato}**\n\n{responso}\n\n➖➖➖➖➖➖➖➖➖➖\n\n"
 
