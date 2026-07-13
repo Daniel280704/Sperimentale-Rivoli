@@ -39,6 +39,11 @@ def media_lista(lista):
     if not valori_validi: return 0
     return int(round(sum(valori_validi) / len(valori_validi)))
 
+def conta_superamenti(lista, soglia):
+    valori_validi = [v for v in lista if v is not None]
+    if not valori_validi: return 0
+    return sum(1 for v in valori_validi if v >= soglia)
+
 def percentuale_superamento(lista, soglia):
     valori_validi = [v for v in lista if v is not None]
     if not valori_validi: return 0
@@ -63,10 +68,10 @@ def interpella_gemini(dati_testuali, oggi_str, giorni_str):
     5. TEMPERATURE DA CITARE: Cita solo la temperatura minima e la temperatura massima prevista.
     6. DISAGIO TERMICO: Quando citi la temperatura massima, affianca ESATTAMENTE la dicitura sul disagio che trovi nei dati.
     7. TERMINOLOGIA CIELO: Quando descrivi la nuvolosità, DEVI integrare nel testo ESATTAMENTE le stesse diciture fornite dai dati. Evita sinonimi liberi.
-    8. PROBABILISMO SULLE PRECIPITAZIONI: Non dare mai i fenomeni precipitativi per certi. Usa sempre un tono probabilistico e il condizionale (es. "possibilità di rovesci", "rischio di temporali", "potrebbe verificarsi (da confermare)").
+    8. PROBABILISMO SULLE PRECIPITAZIONI: Non dare mai i fenomeni precipitativi per certi. Usa sempre un tono probabilistico e riporta la percentuale indicata nei dati (es. "possibile instabilità (60%) con rischio di rovesci da confermare").
     
     ESEMPIO DI STILE DA IMITARE ALLA PERFEZIONE:
-    "La giornata di {giorni_str[2]} si aprirà con condizioni di stabilità atmosferica. Le temperature minime si assesteranno sui 19°C. Durante le ore di luce il cielo si manterrà in prevalenza sereno, favorendo un ampio soleggiamento che porterà la massima a 33°C (disagio marcato 🟠). Nel tardo pomeriggio si segnala una possibile instabilità con rischio di rovesci (da confermare), ma in serata la situazione volgerà al miglioramento."
+    "La giornata di {giorni_str[2]} si aprirà con condizioni di stabilità atmosferica. Le temperature minime si assesteranno sui 19°C. Durante le ore di luce il cielo si manterrà in prevalenza sereno, favorendo un ampio soleggiamento che porterà la massima a 33°C (disagio marcato 🟠). Nel tardo pomeriggio si segnala una possibile instabilità (40%) con rischio di rovesci (da confermare), ma in serata la situazione volgerà al miglioramento."
     
     DATI GIORNALIERI DA TRASFORMARE IN TESTO:
     {dati_testuali}
@@ -230,14 +235,29 @@ def main():
         pct_1mm = percentuale_superamento(prec_eps_membri, 1.0)
         pct_3mm = percentuale_superamento(prec_eps_membri, 3.0)
         pct_5mm = percentuale_superamento(prec_eps_membri, 5.0)
+        num_1mm = conta_superamenti(prec_eps_membri, 1.0)
         
         instabilita = "assente"
-        if pct_5mm >= 10:      
-            instabilita = "spiccata instabilità"
-        elif pct_3mm >= 15:    
-            instabilita = "marcata instabilità"
-        elif pct_1mm >= 20:    
+        probabilita = 0
+
+        if num_1mm >= 3:
             instabilita = "possibile instabilità"
+            if pct_5mm >= 75:
+                probabilita = 95
+            elif pct_5mm >= 50:
+                probabilita = 80
+            elif pct_5mm >= 25:
+                probabilita = 70
+            elif pct_3mm >= 50:
+                probabilita = 60
+            elif pct_3mm >= 25:
+                probabilita = 50
+            elif pct_1mm >= 50:
+                probabilita = 40
+            elif pct_1mm >= 25:
+                probabilita = 30
+            else:
+                probabilita = 15 # Valore base
 
         tipo_prec = ""
         if instabilita != "assente":
@@ -315,11 +335,12 @@ def main():
         if cielo: record += f" Cielo {cielo}."
         
         if instabilita != "assente":
+            str_instabilita = f"{instabilita} ({probabilita}%)"
             if vento_evento == "rischio di raffiche di vento improvvise":
-                record += f" Si segnala {instabilita} con possibilità di {tipo_prec} (da confermare), con annesso rischio di raffiche di vento improvvise."
-                vento_evento = "" # Azzerato per non ripeterlo
+                record += f" Si segnala {str_instabilita} con possibilità di {tipo_prec} (da confermare), associati al rischio di raffiche di vento improvvise."
+                vento_evento = ""
             else:
-                record += f" Si segnala {instabilita} con possibilità di {tipo_prec} (da confermare)."
+                record += f" Si segnala {str_instabilita} con possibilità di {tipo_prec} (da confermare)."
                 
         if vento_evento: record += f" {vento_evento}."
         if nebbia: record += f" {nebbia}."
