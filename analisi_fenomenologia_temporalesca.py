@@ -115,7 +115,7 @@ def get_finestre_innesco_ensemble():
                     # Verifica condizione di innesco forte
                     if ch2_disponibile:
                         # Modificato: servono almeno 4 spaghi D2 e 4 spaghi CH2
-                        if membri_d2 >= 4 and membri_ch2 >= 4: 
+                        if membri_d2 >= 4 or membri_ch2 >= 4: 
                             innesco_valido = True
                     else:
                         # Modificato: fallback a 6 spaghi D2 se CH2 è offline
