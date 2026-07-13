@@ -41,7 +41,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         # Questo gira SEMPRE (tutti i giorni)
-        run: python aggiornamento_meteo_quotidiano_versione_nuova.py
+        run: python aggiornamento_meteo_quotidiano.py
 
       - name: Pausa anti-ingorgo API
         # Si attiva solo se è Lunedì (1), Giovedì (4) o se lo lanci a mano (workflow_dispatch)
@@ -55,7 +55,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python aggiornamento_meteo_medio_termine_versione_nuova.py
+        run: python aggiornamento_meteo_medio_termine.py
 
       - name: Salva i file semaforo (Commit & Push)
         run: |
