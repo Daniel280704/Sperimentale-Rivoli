@@ -481,7 +481,7 @@ DATI ORARI GREZZI:
 {chr(10).join(righe_domani)}
 """
 
-    bollettino_finale = interpella_grok(testo_per_ia, oggi_str)
+    bollettino_finale = interpella_groq(testo_per_ia, oggi_str)
 
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
