@@ -2,32 +2,44 @@ name: Analisi temporali approfondita
 
 on:
   schedule:
-    # Esegue tutti i giorni alle 08:18 UTC (le 10:18 in Italia)
-    # Il "4-9" indica che girerà SOLO da Aprile a Settembre.
-    - cron: '18 8 * 3-10 *'
+    # Esegue ogni ora ai minuti :18 nella fascia dalle 08:18 UTC alle 12:18 UTC
+    # Spaccato in ore italiane (solari): 10:18, 11:18, 12:18, 13:18, 14:18
+    # Il "3-10" indica la validità da Marzo a Ottobre.
+    - cron: '18 8,9,10,11,12 * 3-10 *'
   
-  # workflow_dispatch permette di far partire lo script manualmente tramite il pulsante "Run workflow" su GitHub
-  workflow_dispatch: 
+  workflow_dispatch: # Permette l'avvio manuale dal sito
 
 jobs:
   allerta_convettiva:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # FONDAMENTALE: Consente di committare il file semaforo .txt
+
     steps:
       - name: Checkout del codice
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Aggiornato a Python 3.11
+          python-version: '3.11'
 
       - name: Installa dipendenze
-        # Sostituito il vecchio SDK con il nuovo "google-genai"
-        run: pip install requests google-genai
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests groq
 
       - name: Esegui Script Analisi Temporali
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python analisi_fenomenologia_temporalesca.py
+
+      - name: Salva il file semaforo temporali (Commit & Push)
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add lock_temporali.txt || true
+          git commit -m "Aggiornamento semaforo analisi temporali [skip ci]" || echo "Nessun semaforo da aggiornare"
+          git push
