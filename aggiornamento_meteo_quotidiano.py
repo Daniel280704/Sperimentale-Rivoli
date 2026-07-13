@@ -22,20 +22,14 @@ def gradi_a_direzione(gradi):
     return dirs[int(round(gradi / 45.0)) % 8]
 
 def calcola_disagio_caldo(t_aria, dew_point):
-    # =========================================================================
-    # 1. DISAGIO ESTREMO 🟣 (Condizioni torride/afose estreme, elevato pericolo)
-    # =========================================================================
-    if t_aria >= 40 and dew_point >= 15: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"  # Caldo torrido nel deserto
+    if t_aria >= 40 and dew_point >= 15: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
     elif t_aria >= 38 and dew_point >= 18: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
-    elif t_aria >= 36 and dew_point >= 20: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"  # Afa intensa padana
+    elif t_aria >= 36 and dew_point >= 20: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
     elif t_aria >= 34 and dew_point >= 22: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
-    elif t_aria >= 32 and dew_point >= 24: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"  # Clima tropicale opprimente
+    elif t_aria >= 32 and dew_point >= 24: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
     elif t_aria >= 30 and dew_point >= 25: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
     elif t_aria >= 28 and dew_point >= 26: return "(disagio estremo 🟣 - ELEVATO PERICOLO)"
-
-    # =========================================================================
-    # 2. DISAGIO FORTE 🔴 (Afa molto pesante, limitare gli sforzi fisici)
-    # =========================================================================
+    
     elif t_aria >= 38 and dew_point >= 12: return "(disagio forte 🔴)"
     elif t_aria >= 36 and dew_point >= 15: return "(disagio forte 🔴)"
     elif t_aria >= 34 and dew_point >= 18: return "(disagio forte 🔴)"
@@ -43,10 +37,7 @@ def calcola_disagio_caldo(t_aria, dew_point):
     elif t_aria >= 30 and dew_point >= 22: return "(disagio forte 🔴)"
     elif t_aria >= 28 and dew_point >= 24: return "(disagio forte 🔴)"
     elif t_aria >= 26 and dew_point >= 25: return "(disagio forte 🔴)"
-
-    # =========================================================================
-    # 3. DISAGIO MARCATO 🟠 (Sensazione netta di calura e compressione)
-    # =========================================================================
+    
     elif t_aria >= 36 and dew_point >= 10: return "(disagio marcato 🟠)"
     elif t_aria >= 34 and dew_point >= 13: return "(disagio marcato 🟠)"
     elif t_aria >= 32 and dew_point >= 16: return "(disagio marcato 🟠)"
@@ -54,47 +45,22 @@ def calcola_disagio_caldo(t_aria, dew_point):
     elif t_aria >= 28 and dew_point >= 20: return "(disagio marcato 🟠)"
     elif t_aria >= 26 and dew_point >= 22: return "(disagio marcato 🟠)"
     elif t_aria >= 24 and dew_point >= 24: return "(disagio marcato 🟠)"
-
-    # =========================================================================
-    # 4. DISAGIO LIEVE 🟡 (Primi segnali di fastidio da caldo umido)
-    # =========================================================================
+    
     elif t_aria >= 32 and dew_point >= 8: return "(disagio lieve 🟡)"
     elif t_aria >= 30 and dew_point >= 11: return "(disagio lieve 🟡)"
     elif t_aria >= 28 and dew_point >= 13: return "(disagio lieve 🟡)"
     elif t_aria >= 26 and dew_point >= 15: return "(disagio lieve 🟡)"
     elif t_aria >= 24 and dew_point >= 17: return "(disagio lieve 🟡)"
     elif t_aria >= 22 and dew_point >= 19: return "(disagio lieve 🟡)"
-
-    # =========================================================================
-    # COMFORT O CALDO SOPPORTABILE 🟢
-    # =========================================================================
+    
     else:
         return "(nessun disagio o caldo tollerabile)"
 
 def calcola_disagio_freddo(windchill):
-    # =========================================================================
-    # 1. DISAGIO ESTREMO (Pericolo immediato di congelamento della pelle esposta in meno di 10 minuti)
-    # =========================================================================
     if windchill < -40: return "(disagio estremo da freddo 🥶)"
-    
-    # =========================================================================
-    # 2. DISAGIO FORTE (Rischio elevato di congelamento in 10-30 minuti, brividi violenti)
-    # =========================================================================
     elif windchill < -25: return "(disagio forte da freddo 🥶)"
-    
-    # =========================================================================
-    # 3. DISAGIO MARCATO (Freddo intenso, forte fastidio e necessità di coprirsi molto bene)
-    # =========================================================================
     elif windchill < -10: return "(disagio marcato da freddo 🥶)"
-    
-    # =========================================================================
-    # 4. DISAGIO LIEVE (Primi segnali di fastidio pungente, specialmente sulle estremità)
-    # =========================================================================
     elif windchill < 0: return "(disagio lieve da freddo 🥶)"
-    
-    # =========================================================================
-    # COMFORT O FREDDO SOPPORTABILE
-    # =========================================================================
     else:
         return "(nessun disagio o freddo tollerabile)"
 
@@ -149,7 +115,6 @@ def main():
     inverno = mese_corrente in [11, 12, 1, 2, 3, 4]
     estate = mese_corrente in [5, 6, 7, 8, 9, 10]
     
-    # --- BLOCCO SEMAFORO: CONTROLLO INIZIALE ---
     FILE_LOCK = "lock_quotidiano.txt"
     oggi_str_lock = datetime.now().strftime("%Y-%m-%d")
     
@@ -158,7 +123,6 @@ def main():
             if f.read().strip() == oggi_str_lock:
                 print("✅ Bollettino quotidiano già inviato oggi. Esecuzione terminata.")
                 sys.exit(0)
-    # -------------------------------------------
     
     try:
         dati_det = requests.get("https://api.open-meteo.com/v1/forecast", params={
@@ -207,6 +171,10 @@ def main():
     h_det_ch2 = dati_det_ch2.get('hourly', {}) if ch2_disponibile else {}
     orari = h_det.get('time', [])
     
+    if not orari:
+        print("❌ Errore: Dati orari non disponibili.")
+        return
+        
     sunrise_str = dati_det.get('daily', {}).get('sunrise', [])
     sunset_str = dati_det.get('daily', {}).get('sunset', [])
 
@@ -241,7 +209,11 @@ def main():
     t_min_oggi, t_max_oggi = 100, -100
     t_min_domani, t_max_domani = 100, -100
     apparent_temperatures_medie = []
+    
+    # Variabili per tracciare le variazioni orarie
     dew_point_prev = None
+    w_gst_prev = None
+    ur_prev = None
 
     for i in range(len(orari)):
         ora_dt = datetime.fromisoformat(orari[i])
@@ -289,41 +261,25 @@ def main():
             
             if num_d2_1mm >= 2 and num_ch2_1mm >= 2:
                 instabilita = "possibile instabilità"
-                if pct_d2_5mm >= 75 and pct_ch2_5mm >= 75:
-                    probabilita = 95
-                elif pct_d2_5mm >= 50 and pct_ch2_5mm >= 50:
-                    probabilita = 80
-                elif pct_d2_5mm >= 25 and pct_ch2_5mm >= 25:
-                    probabilita = 70
-                elif pct_d2_3mm >= 50 and pct_ch2_3mm >= 50:
-                    probabilita = 60
-                elif pct_d2_3mm >= 25 and pct_ch2_3mm >= 25:
-                    probabilita = 50
-                elif pct_d2_1mm >= 50 and pct_ch2_1mm >= 50:
-                    probabilita = 40
-                elif pct_d2_1mm >= 25 and pct_ch2_1mm >= 25:
-                    probabilita = 30
-                else:
-                    probabilita = 15
+                if pct_d2_5mm >= 75 and pct_ch2_5mm >= 75: probabilita = 95
+                elif pct_d2_5mm >= 50 and pct_ch2_5mm >= 50: probabilita = 80
+                elif pct_d2_5mm >= 25 and pct_ch2_5mm >= 25: probabilita = 70
+                elif pct_d2_3mm >= 50 and pct_ch2_3mm >= 50: probabilita = 60
+                elif pct_d2_3mm >= 25 and pct_ch2_3mm >= 25: probabilita = 50
+                elif pct_d2_1mm >= 50 and pct_ch2_1mm >= 50: probabilita = 40
+                elif pct_d2_1mm >= 25 and pct_ch2_1mm >= 25: probabilita = 30
+                else: probabilita = 15
         else:
             if num_d2_1mm >= 3:
                 instabilita = "possibile instabilità"
-                if pct_d2_5mm >= 75:
-                    probabilita = 95
-                elif pct_d2_5mm >= 50:
-                    probabilita = 80
-                elif pct_d2_5mm >= 25:
-                    probabilita = 70
-                elif pct_d2_3mm >= 50:
-                    probabilita = 60
-                elif pct_d2_3mm >= 25:
-                    probabilita = 50
-                elif pct_d2_1mm >= 50:
-                    probabilita = 40
-                elif pct_d2_1mm >= 25:
-                    probabilita = 30
-                else:
-                    probabilita = 15
+                if pct_d2_5mm >= 75: probabilita = 95
+                elif pct_d2_5mm >= 50: probabilita = 80
+                elif pct_d2_5mm >= 25: probabilita = 70
+                elif pct_d2_3mm >= 50: probabilita = 60
+                elif pct_d2_3mm >= 25: probabilita = 50
+                elif pct_d2_1mm >= 50: probabilita = 40
+                elif pct_d2_1mm >= 25: probabilita = 30
+                else: probabilita = 15
 
         tipo_prec = ""
         if instabilita != "assente":
@@ -353,21 +309,44 @@ def main():
         elif w_gst_media >= 25: desc_raffiche = "deboli"
 
         vento_evento = ""
-        if w_spd_media >= 15 or w_gst_media >= 25:
-            if dew_point_prev is not None:
-                crollo_dew = dew_point_prev - dew_media >= 2
-                if w_dir_str in ['NW', 'N', 'W'] and w_gst_media > 25 and crollo_dew:
+        
+        # Logica del vento: non menzionato in caso di instabilità
+        if instabilita == "assente":
+            if dew_point_prev is not None and w_gst_prev is not None and ur_prev is not None:
+                aumento_vento = (w_gst_media - w_gst_prev) >= 20
+                crollo_dew = (dew_point_prev - dew_media) >= 5
+                aumento_ur = (ur_media - ur_prev) >= 5
+                
+                is_fohn = w_dir_str in ['NW', 'N', 'W'] and aumento_vento and crollo_dew
+                is_oriente = w_dir_str in ['E', 'NE', 'SE'] and aumento_ur
+                
+                if is_fohn:
                     vento_evento = "improvviso rinforzo per probabile Föhn"
-                elif w_dir_str in ['E', 'NE', 'SE'] and w_gst_media > 20 and not crollo_dew:
+                elif is_oriente:
                     vento_evento = "ventilazione umida orientale"
-            
-            if not vento_evento and not inverno and desc_raffiche:
-                vento_evento = f"rischio di {desc_raffiche} raffiche di vento improvvise"
-                    
-            if not vento_evento and w_spd_media >= 15:
-                vento_evento = "rinforzo della ventilazione"
-            
+                elif w_gst_media >= 25 or w_spd_media >= 15:
+                    if estate:
+                        vento_evento = f"rinforzi della ventilazione dovuti al probabile transito di temporali nelle vicinanze"
+                    else:
+                        if desc_raffiche:
+                            vento_evento = f"rischio di {desc_raffiche} raffiche di vento"
+                        else:
+                            vento_evento = "rinforzo della ventilazione"
+            else:
+                # Caso primissima ora (senza delta precedenti)
+                if w_gst_media >= 25 or w_spd_media >= 15:
+                    if estate:
+                        vento_evento = f"rinforzi della ventilazione dovuti al probabile transito di temporali nelle vicinanze"
+                    else:
+                        if desc_raffiche:
+                            vento_evento = f"rischio di {desc_raffiche} raffiche di vento"
+                        else:
+                            vento_evento = "rinforzo della ventilazione"
+                            
+        # Aggiornamento valori precedenti per l'ora successiva
         dew_point_prev = dew_media
+        w_gst_prev = w_gst_media
+        ur_prev = ur_media
 
         alba = datetime.fromisoformat(sunrise_str[giorno_idx])
         tramonto = datetime.fromisoformat(sunset_str[giorno_idx])
@@ -405,8 +384,6 @@ def main():
         if instabilita != "assente":
             str_instabilita = f"{instabilita} ({probabilita}%)"
             record += f" Si segnala {str_instabilita} con possibilità di {tipo_prec}."
-            if "raffiche" in vento_evento:
-                vento_evento = ""
                 
         if vento_evento: record += f" {vento_evento}."
         if nebbia: record += f" {nebbia}."
@@ -457,10 +434,8 @@ def main():
                       data={"chat_id": chat_id, "text": bollettino_finale, "parse_mode": "Markdown"})
         if risposta_tg.status_code == 200:
             print("Bollettino inviato con successo!")
-            # --- BLOCCO SEMAFORO: AGGIORNAMENTO DOPO IL SUCCESSO ---
             with open(FILE_LOCK, "w") as f:
                 f.write(oggi_str_lock)
-            # --------------------------------------------------------
         else:
             print(f"Errore Telegram: {risposta_tg.text}")
     else:
