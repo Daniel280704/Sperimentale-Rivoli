@@ -105,30 +105,35 @@ def interpella_groq(dati_testuali, oggi_str, domani_str):
     client = Groq(api_key=api_key)
     
     prompt = f"""
-    Sei un meteorologo professionista, profondo conoscitore del microclima del Piemonte e in particolare della pianura e della fascia pedemontana di Rivoli (TO). Il tuo compito è redigere un bollettino meteo quotidiano discorsivo, elegante, autorevole e fluido, analizzando i dati orari e gli estremi termici che ti vengono forniti.
+    Sei un meteorologo professionista. Il tuo compito è scrivere un bollettino discorsivo, fluido ed elegante per Rivoli (TO) partendo dalla sintesi oraria fornita.
+    
+    REGOLE FERREE (PENA IL FALLIMENTO):
+    1. TITOLO E IMPAGINAZIONE: Inizia ESATTAMENTE con: <b>Aggiornamento meteo di {oggi_str}</b>. Lascia SEMPRE una riga vuota tra il titolo e il primo paragrafo, e una riga vuota tra i paragrafi.
+    2. STRUTTURA: Scrivi esattamente due paragrafi: il primo per la giornata odierna, il secondo per domani.
+    3. DIVIETO ASSOLUTO DI ELENCARE GLI ORARI: NON elencare MAI le temperature ora per ora.
+    4. SINTESI DISCORSIVA: Sintetizza l'evoluzione usando fasi del giorno ("in mattinata", "nelle ore centrali", "nel pomeriggio", "in serata").
+    5. TEMPERATURE DA CITARE: Cita solo la temperatura minima e la temperatura massima prevista.
+    6. DISAGIO TERMICO: Quando citi la temperatura massima, affianca ESATTAMENTE la dicitura sul disagio fornita nei dati (comprese le emoji come 🟢, 🟡, 🟠, 🔴, 🟣 o quelle invernali).
+    7. FLUIDITÀ E DIVIETO DI RIPETIZIONI (IMPORTANTE): Usa le diciture sulla nuvolosità fornite in modo NATURALE. È SEVERAMENTE VIETATO ripetere la parola "cielo" a distanza ravvicinata. Il testo deve scorrere in modo logico, fluido e senza cacofonie.
+    8. PROBABILISMO SULLE PRECIPITAZIONI ESTIVE: In caso di instabilità, usa un tono probabilistico (es. "un aumento dell'instabilità con possibili rovesci (60%)"). Se ci sono più orari instabili, prendi la percentuale più alta e ignora gli altri.
+    9. GESTIONE MALTEMPO INVERNALE/AUTUNNALE: Se nei dati trovi "Perturbazione in transito", NON usare la parola "instabilità" o le percentuali. Invece, aggrega le fasce orarie indicando quando piove/nevica, l'intensità media (debole, moderata, forte) e individua SEMPRE l'orario del picco massimo e quanti mm/h sono previsti, citandoli nel testo.
+    10. DIVIETO ASSOLUTO DI FORMATTAZIONE MARKDOWN: Telegram va in crash con caratteri spaiati. NON USARE MAI asterischi (*), underscore (_) o formattazioni simili. Usa solo testo pulito e il tag HTML <b> per il titolo.
+    
+    ESEMPIO DI STILE ESTIVO DA IMITARE:
+    <b>Aggiornamento meteo di domenica 12 luglio</b>
 
-    LINEE GUIDA PER L'ANALISI METEOROLOGICA (RAGIONA DA ESPERTO):
-    1. Dinamiche delle Precipitazioni:
-       - Instabilità Convettiva (Temporali di calore): Se noti piogge concentrate nelle ore pomeridiane o serali associate a valori di CAPE significativi (> 150-200 J/kg), deduci dinamiche convettive estive. Usa un tono probabilistico (es. "rischio di rovesci o temporali di calore (50%)") basandoti sulla percentuale massima (Prob) indicata in quella fascia.
-       - Perturbazioni Frontali (Maltempo strutturato): Se le precipitazioni sono estese su molte ore, con CAPE nullo o quasi, descrivi il transito della perturbazione. Individua l'ora del picco massimo di intensità in mm/h e citalo esplicitamente nel testo, descrivendo l'evoluzione per fasi del giorno. Se in inverno la temperatura scende sotto i 2°C, valuta se menzionare la neve.
-    2. Valutazione del Vento:
-       - Ignora completamente la ventilazione se le raffiche non superano i 30 km/h o se l'intensità è modesta/blanda.
-       - Föhn: Se noti raffiche forti (> 45-50 km/h) provenienti da quadranti occidentali o settentrionali (NW, N, W) associate a una compressione adiabatica (netto crollo del Dew Point e umidità molto bassa), deduci autonomamente l'ingresso del Föhn e descrivilo come elemento saliente.
-       - Correnti Orientali: Se noti venti da E, NE, SE associati a umidità satura e maltempo, descrivi il flusso umido da est.
-    3. Evoluzione del Cielo e della Visibilità:
-       - Sintetizza l'andamento della nuvolosità basandoti sui minuti di soleggiamento orario (Sole) divisi per fasce della giornata (mattino, ore centrali, pomeriggio, sera). Non fare la cronistoria ora per ora.
-       - Se noti temperature e Dew Point quasi identici (UR > 95%) nelle ore notturne o al primo mattino, uniti a vento calmo, menziona il rischio di foschie o banchi di nebbia in diradamento.
+    La giornata odierna si apre con stabilità atmosferica. Le minime si assestano sui 19°C. Durante le ore di luce il cielo si manterrà in prevalenza sereno, portando la massima a 33°C (disagio marcato 🟠). Nel tardo pomeriggio si segnala un aumento dell'instabilità con possibili rovesci o temporali (40%). In serata situazione in miglioramento.
+    
+    La giornata di domani seguirà un copione simile...
 
-    REGOLE DI STILE E DI ELEGANZA (FERREE):
-    - TITOLO: Inizia l'output ESATTAMENTE con: <b>Aggiornamento meteo di {oggi_str}</b>.
-    - STRUTTURA: Scrivi esattamente due paragrafi. Il primo paragrafo per la giornata odierna (Oggi), il secondo paragrafo per la giornata di domani. Lascia una riga vuota tra il titolo e il primo paragrafo, e una riga vuota tra i due paragrafi.
-    - REQUISITO DELLE TEMPERATURE: All'interno della narrazione di ciascun paragrafo, devi citare la temperatura minima e la temperatura massima previste. Accanto al valore della temperatura massima, aggiungi ESATTAMENTE la dicitura sul disagio termico con la relativa emoji che trovi nei dati di input (es. "(disagio marcato 🟠)" o "(nessun disagio o freddo tollerabile 🟢)").
-    - DIVIETI DI VOCABOLARIO (PENA IL FALLIMENTO):
-       * È SEVERAMENTE VIETATO generare espressioni ridondanti o cacofoniche come "nuvolosità parzialmente nuvolosa" o "cielo parzialmente nuvoloso per tutto il giorno, con un cielo...". Usa sinonimi eleganti (es. "il cielo si presenterà parzialmente nuvoloso", "un contesto irregolarmente nuvoloso", "ampie schiarite", "velature").
-       * Se non sono previste precipitazioni, È VIETATO usare formule robotiche come "senza segnalazioni di precipitazioni significative" o "nessuna precipitazione". Inquadra la giornata parlando di "contesto asciutto", "tempo stabile", "giornata soleggiata" o ometti del tutto il riferimento ai fenomeni.
-    - FORMATTAZIONE: Non usare MAI caratteri di formattazione Markdown (niente asterischi *, underscore _, o elenchi puntati). Usa solo testo pulito e il tag HTML <b> per il titolo.
+    ESEMPIO DI STILE INVERNALE DA IMITARE:
+    <b>Aggiornamento meteo di domenica 12 dicembre</b>
 
-    DATI GIORNALIERI DA ELABORARE:
+    La giornata odierna vedrà un progressivo peggioramento. Le temperature oscilleranno tra una minima di 4°C e una massima di 8°C (nessun disagio o freddo tollerabile 🟢). Dal pomeriggio è atteso il transito di una perturbazione con piogge deboli, che si intensificheranno in serata divenendo moderate. Il picco massimo delle precipitazioni è atteso intorno alle 21:00 con circa 4.5 mm/h. La ventilazione si manterrà forte umida orientale.
+    
+    La giornata di domani...
+
+    DATI GIORNALIERI DA TRASFORMARE IN TESTO:
     {dati_testuali}
     """
     try:
