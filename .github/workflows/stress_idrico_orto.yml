@@ -6,24 +6,25 @@ on:
     - cron: '18 12-16 * * *'
   workflow_dispatch: 
 
-permissions:
-  contents: write
-
 jobs:
   bollettino_orto:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # FONDAMENTALE: Serve per poter fare il commit dei file semaforo (.txt)
 
     steps:
-      - name: Estrazione codice
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Installa dipendenze
-        run: pip install requests groq
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests groq
 
       - name: Esegui Script Orto
         env:
@@ -32,10 +33,12 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python stress_idrico_orto.py
 
-      - name: Salva memoria lucchetto e irrigazione
+      - name: Salva i file semaforo e memoria irrigazione (Commit & Push)
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add lock_orto.txt tg_offset_orto.txt ultima_innaffiatura.txt || true
-          git commit -m "Aggiornamento memoria bot orto" || true
-          git push || true
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add lock_orto.txt || true
+          git add tg_offset_orto.txt || true
+          git add ultima_innaffiatura.txt || true
+          git commit -m "Aggiornamento semafori orto [skip ci]" || echo "Nessun aggiornamento semafori da committare"
+          git push
