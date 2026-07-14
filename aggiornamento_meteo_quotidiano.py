@@ -417,17 +417,17 @@ def main():
         if dew_point_prev is not None and w_gst_prev is not None and ur_prev is not None:
                 
             # 1. CONDIZIONI FÖHN (Direzione N, NW, W)
-            # Scatta se la raffica è in netto aumento (>= 5 km/h) OPPURE se sta già soffiando (>= 30 km/h)
+            # Scatta se la raffica è in aumento (>= 5 km/h) OPPURE se sta già soffiando (>= 30 km/h)
             # E CONTEMPORANEAMENTE se l'aria si sta seccando (Dew scende >= 1) OPPURE se è già molto secca (UR < 40%)
             is_fohn = (w_dir_str in ['NW', 'N', 'W'] and 
                        ((w_gst_media - w_gst_prev) >= 5 or w_gst_media >= 30) and 
                        ((dew_point_prev - dew_media) >= 1 or ur_media < 40))
                 
             # 2. CONDIZIONI EST (Direzione E, NE, SE)
-            # Scatta se la raffica è in aumento (>= 3 km/h) OPPURE se sta già soffiando (>= 30 km/h)
+            # Scatta se la raffica è in aumento (>= 5 km/h) OPPURE se sta già soffiando (>= 30 km/h)
             # E l'umidità relativa è decente (evita di confondere venti orientali secchi con correnti umide)
             is_oriente = (w_dir_str in ['E', 'NE', 'SE'] and 
-                          ((w_gst_media - w_gst_prev) >= 3 or w_gst_media >= 30) and 
+                          ((w_gst_media - w_gst_prev) >= 5 or w_gst_media >= 30) and 
                           ur_media > 40)
                 
             if is_fohn and int_vento not in ["blanda"]:
