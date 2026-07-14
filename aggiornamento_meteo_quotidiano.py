@@ -108,7 +108,7 @@ def interpella_groq(dati_testuali, oggi_str, domani_str):
     Sei un meteorologo professionista. Il tuo compito è scrivere un bollettino discorsivo, fluido ed elegante per Rivoli (TO) partendo dalla sintesi oraria fornita.
     
     REGOLE FERREE (PENA IL FALLIMENTO):
-    1. TITOLO E IMPAGINAZIONE: Inizia ESATTAMENTE con: <b>Aggiornamento meteo di {oggi_str}</b>. Lascia SEMPRE una riga vuota tra il titolo e il primo paragrafo, e una riga vuota tra i paragrafi.
+    1. TITOLO E IMPAGINAZIONE: Inizia ESATTAMENTE con: <b>Aggiornamento meteo di {oggi_str}</b>. Lascia SEMPRE una riga vuota tra il titolo e il primo paragrafo, e UNA SOLA riga vuota tra i paragrafi (MAI PIU' DI UNA).
     2. STRUTTURA: Scrivi esattamente due paragrafi: il primo per la giornata odierna, il secondo per domani.
     3. DIVIETO ASSOLUTO DI ELENCARE GLI ORARI: NON elencare MAI le temperature ora per ora.
     4. SINTESI DISCORSIVA: Sintetizza l'evoluzione usando fasi del giorno ("in mattinata", "nelle ore centrali", "nel pomeriggio", "in serata").
@@ -393,9 +393,9 @@ def main():
 
             if dew_point_prev is not None and w_gst_prev is not None and ur_prev is not None and w_spd_prev is not None:
                 aumento_spd = w_spd_media - w_spd_prev
-                aumento_vento = (w_gst_media - w_gst_prev) >= 20
-                crollo_dew = (dew_point_prev - dew_media) >= 5
-                aumento_ur = (ur_media - ur_prev) >= 5
+                aumento_vento = (w_gst_media - w_gst_prev) >= 10   # Soglia raffica ridotta a 10 km/h
+                crollo_dew = (dew_point_prev - dew_media) >= 3     # Soglia Föhn ridotta a 3°C
+                aumento_ur = (ur_media - ur_prev) >= 3             # Soglia vento orientale ridotta al 3%
                 
                 if aumento_spd < 5 and w_gst_media < 30:
                     pass 
@@ -403,21 +403,17 @@ def main():
                     is_fohn = w_dir_str in ['NW', 'N', 'W'] and aumento_vento and crollo_dew
                     is_oriente = w_dir_str in ['E', 'NE', 'SE'] and aumento_ur
                     
-                    if is_fohn and int_vento not in ["blanda", "modesta"]:
+                    # Abbiamo rimosso "modesta" dalle esclusioni: ora scatta anche per vento moderato
+                    if is_fohn and int_vento not in ["blanda"]:
                         vento_evento = f"ventilazione {int_vento} da probabile Föhn"
-                    elif is_oriente and int_vento not in ["blanda", "modesta"]:
+                    elif is_oriente and int_vento not in ["blanda"]:
                         vento_evento = f"ventilazione {int_vento} umida orientale"
-                    elif int_vento not in ["blanda", "modesta"]:
-                        vento_evento = f"ventilazione {int_vento}"
-            else:
-                if int_vento not in ["blanda", "modesta"]:
-                    vento_evento = f"ventilazione {int_vento}"
                             
         dew_point_prev = dew_media
         w_gst_prev = w_gst_media
         w_spd_prev = w_spd_media
         ur_prev = ur_media
-
+               
         alba = datetime.fromisoformat(sunrise_str[giorno_idx])
         tramonto = datetime.fromisoformat(sunset_str[giorno_idx])
         alba_piu_2 = alba + timedelta(hours=2)
@@ -527,14 +523,18 @@ def main():
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if token and chat_id:
-        risposta_tg = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
-                      data={"chat_id": chat_id, "text": bollettino_finale, "parse_mode": "HTML"})
-        if risposta_tg.status_code == 200:
-            print("Bollettino inviato con successo!")
-            with open(FILE_LOCK, "w") as f:
-                f.write(oggi_str_lock)
+        # CONTROLLO DI SICUREZZA: Invia solo se Groq non ha restituito un errore
+        if bollettino_finale.startswith("Errore"):
+            print(f"Blocco l'invio su Telegram a causa di un errore API: {bollettino_finale}")
         else:
-            print(f"Errore Telegram: {risposta_tg.text}")
+            risposta_tg = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                          data={"chat_id": chat_id, "text": bollettino_finale, "parse_mode": "HTML"})
+            if risposta_tg.status_code == 200:
+                print("Bollettino inviato con successo!")
+                with open(FILE_LOCK, "w") as f:
+                    f.write(oggi_str_lock)
+            else:
+                print(f"Errore Telegram: {risposta_tg.text}")
     else:
         print("Errore: Token o Chat ID mancanti! Stampo a video:")
         print("-------------------------------------------------")
