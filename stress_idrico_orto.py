@@ -178,9 +178,12 @@ def calcola_dati_orto():
             
             bilancio += (p_giorno - e_giorno)
             
-            # Reset se piove >= 3mm o se è stato premuto il bottone in quella data
-            if p_giorno >= 3.0 or data_storica == data_reset_manuale:
+            # Reset completo per annaffiatura manuale o pioggia abbondante
+            if data_storica == data_reset_manuale or p_giorno >= 5.0:
                 bilancio = 0.0
+            # Dimezzamento dello stress in caso di pioggia moderata
+            elif p_giorno >= 3.0:
+                bilancio = bilancio / 2.0
             
             # Il terreno non trattiene acqua all'infinito
             if bilancio > 0.0: bilancio = 0.0
@@ -200,7 +203,12 @@ def calcola_dati_orto():
         e_domani = sum(e for e in e_det[idx_domani_s:idx_domani_e+1] if e is not None)
         
         bil_domani += (p_domani - e_domani)
-        if p_domani >= 3.0: bil_domani = 0.0
+        
+        if p_domani >= 5.0: 
+            bil_domani = 0.0
+        elif p_domani >= 3.0:
+            bil_domani = bil_domani / 2.0
+            
         if bil_domani > 0.0: bil_domani = 0.0
         bil_domani = max(bil_domani, -25.0)
 
