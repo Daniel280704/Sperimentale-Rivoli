@@ -84,19 +84,20 @@ def interpella_groq(dati_testuali):
     
     prompt = f"""
     Sei un assistente agrometeorologico personale. Il tuo compito è scrivere UN UNICO PARAGRAFO fluido e discorsivo 
-    (massimo 4-5 frasi) per consigliare all'utente se e quando innaffiare il suo orto a Rivoli (TO).
+    (massimo 5-6 frasi) per consigliare all'utente se e quando innaffiare il suo orto a Rivoli (TO).
 
     DATI TECNICI ATTUALI DA ELABORARE:
     {dati_testuali}
 
     REGOLE FERREE E LOGICA DECISIONALE:
-    1. INIZIO: Spiega brevemente lo stato di stress idrico stimato per fine giornata odierna e come evolverà domani.
-    2. MEMORIA IRRIGAZIONE: Se nei dati risulta che l'utente ha bagnato l'orto ieri o oggi, ricordalo nel testo spiegando che questo è il motivo per cui lo stress è attualmente basso o moderato (es. "Oggi lo stress è moderato grazie all'irrigazione di ieri...").
-    3. CONSIGLIO IRRIGAZIONE: Consiglia esplicitamente all'utente di bagnare l'orto NELLA SERATA in cui lo stress diventa "ALTO" o "ESTREMO" (può essere stasera, oppure domani sera).
-    4. GESTIONE PIOGGIA: Se la probabilità di rovesci o temporali indicata nei dati è MAGGIORE O UGUALE AL 15%, devi assolutamente inserire un avviso. Esempio: "...tuttavia, poiché nelle prossime ore non sono esclusi rovesci o temporali (probabilità 40%), valuta attentamente se bagnare l'orto stasera per evitare ristagni". Non parlare in alcun modo di pioggia se la probabilità è inferiore al 15%.
-    5. FORMATTAZIONE: È SEVERAMENTE VIETATO usare asterischi (*) o underscore (_) per il grassetto o corsivo, Telegram andrà in crash. Usa solo il tag HTML <b>testo in grassetto</b> per evidenziare le parole chiave (come i livelli di stress <b>ALTO</b>, <b>ESTREMO</b>, ecc). Inserisci le emoji dei livelli di stress fornite.
+    1. INIZIO: Spiega brevemente lo stato di stress idrico stimato per fine giornata odierna.
+    2. DOPPIO SCENARIO PER DOMANI: Spiega come evolverà lo stress idrico domani in base ai due scenari forniti. Se lo scenario peggiorativo (assenza di pioggia) aggrava la situazione rispetto a quello previsto, esponi chiaramente il rischio (es. "Domani lo stress previsto è MODERATO in caso di pioggia, ma qualora non dovesse piovere salirà a livello ALTO"). Se i due scenari sono identici, citane logicamente solo uno.
+    3. MEMORIA IRRIGAZIONE: Se nei dati risulta che l'utente ha bagnato l'orto ieri o oggi, ricordalo nel testo spiegando che lo stress odierno ne ha beneficiato.
+    4. CONSIGLIO IRRIGAZIONE: Consiglia all'utente di bagnare l'orto basandoti sullo SCENARIO SENZA PIOGGIA. Se in assenza di pioggia lo stress diventerà "ALTO" o "ESTREMO", avvisa che potrebbe essere necessario irrigare stasera o domani sera.
+    5. GESTIONE PROBABILITA' PIOGGIA: Se la probabilità di temporali è MAGGIORE O UGUALE AL 15%, modera il consiglio inserendo un avviso di prudenza. Esempio: "...tuttavia, poiché nelle prossime ore non sono esclusi temporali (probabilità 40%), valuta attentamente la situazione prima di bagnare per evitare ristagni idrici". Ignora del tutto la probabilità se è inferiore al 15%.
+    6. FORMATTAZIONE: È SEVERAMENTE VIETATO usare asterischi (*) o underscore (_) per il grassetto o corsivo, Telegram andrà in crash. Usa solo il tag HTML <b>testo in grassetto</b> per evidenziare le parole chiave (come i livelli di stress <b>ALTO</b>, <b>ESTREMO</b>, ecc). Inserisci le emoji dei livelli di stress fornite.
 
-    Scrivi direttamente il bollettino senza convenevoli, saluti o introduzioni.
+    Scrivi direttamente il bollettino senza convenevoli o frasi introduttive.
     """
     
     try:
@@ -110,7 +111,7 @@ def interpella_groq(dati_testuali):
         return f"Errore AI Groq: {e}"
 
 def calcola_dati_orto():
-    # 1. Determinismo per ET0 (Seamless storico + previsionale)
+    # 1. Determinismo per ET0
     params_det = {
         "latitude": LAT_RIVOLI, "longitude": LON_RIVOLI,
         "hourly": "precipitation,et0_fao_evapotranspiration",
@@ -119,7 +120,7 @@ def calcola_dati_orto():
         "timezone": "Europe/Rome"
     }
     
-    # 2. Ensemble per probabilità temporali/rovesci (D2 e CH2)
+    # 2. Ensemble per probabilità inneschi e media mm pioggia (D2 e CH2)
     params_eps_base = {
         "latitude": LAT_RIVOLI, "longitude": LON_RIVOLI,
         "hourly": "precipitation",
@@ -149,7 +150,6 @@ def calcola_dati_orto():
     ieri_str = (now_rome - timedelta(days=1)).strftime("%Y-%m-%d")
     domani_str = (now_rome + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # Lettura pulsante
     data_reset_manuale = None
     if os.path.exists("ultima_innaffiatura.txt"):
         with open("ultima_innaffiatura.txt", "r") as f:
@@ -165,9 +165,9 @@ def calcola_dati_orto():
     p_det = dati_det["precipitation"]
     e_det = dati_det["et0_fao_evapotranspiration"]
 
-    # --- SIMULATORE STORICO IN MEMORIA E CALCOLO FINO A FINE GIORNATA ODIERNA ---
+    # --- SIMULATORE STORICO IN MEMORIA ---
     bilancio = 0.0
-    for i in range(10, -1, -1): # Arriva fino a OGGI (incluso)
+    for i in range(10, -1, -1): 
         data_storica = (now_rome - timedelta(days=i)).strftime("%Y-%m-%d")
         idx_s = get_idx(times, f"{data_storica}T00:00")
         idx_e = get_idx(times, f"{data_storica}T23:00")
@@ -178,41 +178,62 @@ def calcola_dati_orto():
             
             bilancio += (p_giorno - e_giorno)
             
-            # Reset completo per annaffiatura manuale o pioggia abbondante
-            if data_storica == data_reset_manuale or p_giorno >= 5.0:
+            if data_storica == data_reset_manuale or p_giorno >= 4.0:
                 bilancio = 0.0
-            # Dimezzamento dello stress in caso di pioggia moderata
-            elif p_giorno >= 3.0:
+            elif p_giorno >= 2.0:
                 bilancio = bilancio / 2.0
             
-            # Il terreno non trattiene acqua all'infinito
             if bilancio > 0.0: bilancio = 0.0
-            # Limite saturazione massima siccità (25 mm negativi)
             bilancio = max(bilancio, -25.0)
 
             if data_storica == oggi_str:
                 bil_oggi_fine_giornata = bilancio
                 
-    # --- PREVISIONE DOMANI ---
+    # --- PREVISIONE DOMANI A DOPPIO SCENARIO ---
     idx_domani_s = get_idx(times, f"{domani_str}T00:00")
     idx_domani_e = get_idx(times, f"{domani_str}T23:00")
     
-    bil_domani = bil_oggi_fine_giornata
-    if idx_domani_s is not None and idx_domani_e is not None:
-        p_domani = sum(p for p in p_det[idx_domani_s:idx_domani_e+1] if p is not None)
+    idx_eps_domani_s = get_idx(orari_eps, f"{domani_str}T00:00")
+    idx_eps_domani_e = get_idx(orari_eps, f"{domani_str}T23:00")
+    
+    bil_domani_con_pioggia = bil_oggi_fine_giornata
+    bil_domani_senza_pioggia = bil_oggi_fine_giornata
+    
+    if idx_domani_s is not None and idx_domani_e is not None and idx_eps_domani_s is not None and idx_eps_domani_e is not None:
         e_domani = sum(e for e in e_det[idx_domani_s:idx_domani_e+1] if e is not None)
         
-        bil_domani += (p_domani - e_domani)
-        
-        if p_domani >= 5.0: 
-            bil_domani = 0.0
-        elif p_domani >= 3.0:
-            bil_domani = bil_domani / 2.0
+        # Calcolo Pioggia EPS prevista per domani (Media della media tra D2 e CH2)
+        p_domani_eps = 0.0
+        for j in range(idx_eps_domani_s, idx_eps_domani_e + 1):
+            spaghi_d2 = [dati_eps_d2[k][j] for k in dati_eps_d2 if k.startswith('precipitation_member') and dati_eps_d2[k][j] is not None]
+            media_d2_ora = sum(spaghi_d2) / len(spaghi_d2) if spaghi_d2 else 0.0
             
-        if bil_domani > 0.0: bil_domani = 0.0
-        bil_domani = max(bil_domani, -25.0)
+            if ch2_disponibile:
+                spaghi_ch2 = [dati_eps_ch2[k][j] for k in dati_eps_ch2 if k.startswith('precipitation_member') and dati_eps_ch2[k][j] is not None]
+                media_ch2_ora = sum(spaghi_ch2) / len(spaghi_ch2) if spaghi_ch2 else 0.0
+                pioggia_oraria = (media_d2_ora + media_ch2_ora) / 2.0
+            else:
+                pioggia_oraria = media_d2_ora
+                
+            p_domani_eps += pioggia_oraria
+        
+        # SCENARIO 1: Modello Ensemble (con pioggia prevista)
+        bil_domani_con_pioggia += (p_domani_eps - e_domani)
+        if p_domani_eps >= 4.0: 
+            bil_domani_con_pioggia = 0.0
+        elif p_domani_eps >= 2.0:
+            bil_domani_con_pioggia = bil_domani_con_pioggia / 2.0
+            
+        if bil_domani_con_pioggia > 0.0: bil_domani_con_pioggia = 0.0
+        bil_domani_con_pioggia = max(bil_domani_con_pioggia, -25.0)
 
-    # --- CALCOLO PROBABILITA' PIOGGIA NELLE PROSSIME 24-30h (Dall'ora attuale a domani sera) ---
+        # SCENARIO 2: Peggiorativo (0.0 mm di pioggia caduti)
+        bil_domani_senza_pioggia -= e_domani
+        if bil_domani_senza_pioggia > 0.0: bil_domani_senza_pioggia = 0.0
+        bil_domani_senza_pioggia = max(bil_domani_senza_pioggia, -25.0)
+
+
+    # --- CALCOLO PROBABILITA' PIOGGIA NELLE PROSSIME 24-30h ---
     max_prob_pioggia = 0
     trigger_pioggia_scattato = False
     ora_attuale_str = now_rome.strftime("%Y-%m-%dT%H:00")
@@ -221,7 +242,6 @@ def calcola_dati_orto():
     idx_eps_end = get_idx(orari_eps, f"{domani_str}T23:00")
     
     def membri_sopra_soglia_finestra(dati_eps_dict, start_idx, soglia=1.0, tolleranza=4):
-        """Conta quanti spaghi superano la soglia in ALMENO UNA delle ore della finestra scorrevole."""
         membri_validi = 0
         chiavi_membri = [k for k in dati_eps_dict.keys() if k.startswith('precipitation_member')]
         for k in chiavi_membri:
@@ -236,7 +256,6 @@ def calcola_dati_orto():
         
         for j in range(idx_eps_start, idx_eps_end + 1):
             
-            # 1. VERIFICA DEL TRIGGER (5 su D2 e 5 su CH2) nella finestra temporale
             membri_d2_finestra = membri_sopra_soglia_finestra(dati_eps_d2, j, 1.0, 4)
             membri_ch2_finestra = membri_sopra_soglia_finestra(dati_eps_ch2, j, 1.0, 4) if ch2_disponibile else 0
             
@@ -247,7 +266,6 @@ def calcola_dati_orto():
                 if membri_d2_finestra >= 8:
                     trigger_pioggia_scattato = True
 
-            # 2. CALCOLO DELLA PERCENTUALE MATEMATICA sull'ora esatta per stimare il picco
             spaghi_d2 = [dati_eps_d2[k][j] for k in dati_eps_d2 if k.startswith('precipitation_member')]
             pct_d2 = percentuale_superamento(spaghi_d2, 1.0)
             
@@ -261,13 +279,13 @@ def calcola_dati_orto():
             if prob_media_ora > max_pct_media:
                 max_pct_media = prob_media_ora
                 
-        # Approviamo la percentuale solo se il sistema ha superato l'esame del trigger
         if trigger_pioggia_scattato:
             max_prob_pioggia = int(round(max_pct_media))
 
     return {
         "stress_oggi": valuta_stress(bil_oggi_fine_giornata),
-        "stress_domani": valuta_stress(bil_domani),
+        "stress_domani_con_pioggia": valuta_stress(bil_domani_con_pioggia),
+        "stress_domani_senza_pioggia": valuta_stress(bil_domani_senza_pioggia),
         "ha_bagnato_ieri": "Sì" if ha_bagnato_ieri else "No",
         "ha_bagnato_oggi": "Sì" if ha_bagnato_oggi else "No",
         "probabilita_pioggia": max_prob_pioggia
@@ -285,16 +303,16 @@ def main():
     
     testo_per_ia = f"""
     - Stress Idrico Stimato (a fine giornata odierna): {dati['stress_oggi']}
-    - Stress Idrico Previsto (Domani a fine giornata): {dati['stress_domani']}
+    - Stress Idrico Previsto (Domani a fine giornata) SE PIOVE come previsto dai modelli: {dati['stress_domani_con_pioggia']}
+    - Stress Idrico Previsto (Domani a fine giornata) SE NON PIOVE (scenario peggiore): {dati['stress_domani_senza_pioggia']}
     - L'utente ha segnalato di aver innaffiato l'orto IERI? {dati['ha_bagnato_ieri']}
     - L'utente ha segnalato di aver innaffiato l'orto OGGI? {dati['ha_bagnato_oggi']}
-    - Probabilità massima stimata dai modelli ensemble di temporali/rovesci tra stasera e domani sera: {dati['probabilita_pioggia']}%
+    - Probabilità massima stimata di temporali/rovesci tra stasera e domani sera: {dati['probabilita_pioggia']}%
     """
     
     print("Elaborazione del bollettino tramite Groq AI...")
     bollettino_ai = interpella_groq(testo_per_ia)
     
-    # Intestazione grafica per Telegram
     messaggio_finale = f"🌱 <b>BOLLETTINO ORTO E SUOLO</b>\n\n{bollettino_ai}"
     
     if token and chat_id:
