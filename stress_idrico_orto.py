@@ -90,11 +90,11 @@ def interpella_groq(dati_testuali):
     {dati_testuali}
 
     REGOLE FERREE E LOGICA DECISIONALE:
-    1. INIZIO: Spiega brevemente lo stato di stress idrico stimato per STASERA (fine giornata odierna), confrontando i due scenari se previste precipitazioni.
-    2. EVOLUZIONE DOMANI: Spiega come evolverà lo stress idrico domani in base ai due scenari forniti. Se lo scenario peggiorativo (assenza di pioggia) aggrava la situazione rispetto a quello previsto, esponi chiaramente il rischio. Se i due scenari sono identici, citane logicamente solo uno.
-    3. MEMORIA IRRIGAZIONE E GIORNI TRASCORSI: Se nei dati risulta che l'utente ha bagnato l'orto OGGI, ricordalo spiegando che lo stress odierno ne ha beneficiato. INVECE, se il numero di "Giorni trascorsi dall'ultima innaffiatura o pioggia" è MAGGIORE DI 0, DEVI inserire fluidamente nel testo la formula esatta "non essendo stato bagnato negli ultimi X giorni" (sostituendo X con il numero reale fornito nei dati) per giustificare l'aumento dello stress.
-    4. CONSIGLIO IRRIGAZIONE: Consiglia all'utente di bagnare l'orto basandoti sullo SCENARIO SENZA PIOGGIA. Se in assenza di pioggia lo stress diventerà "ALTO" o "ESTREMO", avvisa che potrebbe essere necessario irrigare stasera o domani sera.
-    5. GESTIONE PIOGGIA (STASERA E DOMANI): Hai a disposizione le probabilità di pioggia separate per STASERA e per DOMANI. Mettile in relazione al consiglio di innaffiare. Es: "Stasera lo stress diventerà alto in caso di assenza di pioggia, tuttavia c'è un 60% di probabilità di temporali entro mezzanotte, quindi valuta se attendere prima di bagnare". Ignora le probabilità inferiori al 15%.
+    1. INIZIO: Spiega brevemente lo stato di stress idrico stimato per STASERA (fine giornata odierna). Se hai a disposizione il doppio scenario, descrivilo; altrimenti usa semplicemente lo stress unico fornito.
+    2. EVOLUZIONE DOMANI: Spiega come evolverà lo stress idrico domani. Se vedi lo scenario doppio (SE PIOVE / SE NON PIOVE), esponi chiaramente il rischio qualora non dovesse piovere. Se vedi un solo scenario, spiega banalmente cosa accadrà allo stress domani.
+    3. MEMORIA IRRIGAZIONE E GIORNI TRASCORSI: Se nei dati risulta che l'utente ha bagnato l'orto OGGI, ricordalo spiegando che lo stress odierno ne ha beneficiato. INVECE, se "Giorni trascorsi" è MAGGIORE DI 0, DEVI inserire fluidamente nel testo la formula esatta "non essendo stato bagnato negli ultimi X giorni" (sostituendo X con il numero fornito) per giustificare lo stato del terreno.
+    4. CONSIGLIO IRRIGAZIONE: Consiglia all'utente di bagnare l'orto NELLA SERATA in cui lo stress diventa "ALTO" o "ESTREMO" (può essere stasera, o domani sera). Se c'è un doppio scenario, decidi in base allo scenario SENZA PIOGGIA.
+    5. GESTIONE PIOGGIA E DIVIETI: Se nei dati TI VIENE FORNITA la probabilità di pioggia (STASERA e/o DOMANI), raccomanda di valutare bene prima di bagnare per evitare ristagni. SE INVECE NEI DATI NON C'È SCRITTA NESSUNA PROBABILITÀ DI PIOGGIA, È ASSOLUTAMENTE VIETATO NOMINARLA. Non dire MAI frasi come "visto che non pioverà", "con probabilità 0%" o "in assenza di precipitazioni previste". Parla solo ed esclusivamente dello stress termico e consiglia l'innaffiatura.
     6. FORMATTAZIONE: È SEVERAMENTE VIETATO usare asterischi (*) o underscore (_) per il grassetto o corsivo, Telegram andrà in crash. Usa solo il tag HTML <b>testo in grassetto</b> per evidenziare le parole chiave (come i livelli di stress <b>ALTO</b>, <b>ESTREMO</b>, ecc). Inserisci le emoji dei livelli di stress fornite.
 
     Scrivi direttamente il bollettino senza convenevoli o frasi introduttive.
@@ -217,7 +217,7 @@ def calcola_dati_orto():
         return p_eps_tot, int(round(max_prob))
 
     # =========================================================================
-    # 1. STORICO IN MEMORIA (Da 10 giorni fa a IERI compreso)
+    # 1. STORICO IN MEMORIA
     # =========================================================================
     bilancio = 0.0
     for i in range(10, 0, -1): 
@@ -238,14 +238,13 @@ def calcola_dati_orto():
             
             bilancio = max(min(bilancio, 0.0), -25.0)
 
-            # Memoria logica per l'IA: aggiorna l'ultima volta che la terra ha preso acqua
             if p_giorno >= 2.0:
                 data_storica_dt = (now_rome - timedelta(days=i)).date()
                 if ultimo_bagnato_dt is None or data_storica_dt > ultimo_bagnato_dt:
                     ultimo_bagnato_dt = data_storica_dt
 
     # =========================================================================
-    # 2. OGGI (Da 00:00 all'ora attuale)
+    # 2. OGGI (fino a ora)
     # =========================================================================
     idx_oggi_00 = get_idx(times, f"{oggi_str}T00:00")
     idx_now = get_idx(times, ora_attuale_str)
@@ -266,14 +265,13 @@ def calcola_dati_orto():
         if p_oggi_finora >= 2.0 or ha_bagnato_oggi:
             ultimo_bagnato_dt = now_rome.date()
 
-    # Calcolo definitivo dei giorni trascorsi dall'ultima "bagnata" (naturale o manuale)
     if ultimo_bagnato_dt is not None:
         giorni_senza_acqua = (now_rome.date() - ultimo_bagnato_dt).days
     else:
         giorni_senza_acqua = "Sconosciuto"
 
     # =========================================================================
-    # 3. STASERA (Dall'ora attuale + 1 fino alle 23:00 di oggi)
+    # 3. STASERA
     # =========================================================================
     idx_now_eps = get_idx(orari_eps, ora_attuale_str)
     idx_oggi_23_eps = get_idx(orari_eps, f"{oggi_str}T23:00")
@@ -297,7 +295,7 @@ def calcola_dati_orto():
     bil_stasera_senza_pioggia = max(min(bil_stasera_senza_pioggia, 0.0), -25.0)
 
     # =========================================================================
-    # 4. DOMANI (Da 00:00 a 23:00)
+    # 4. DOMANI
     # =========================================================================
     idx_domani_00_eps = get_idx(orari_eps, f"{domani_str}T00:00")
     idx_domani_23_eps = get_idx(orari_eps, f"{domani_str}T23:00")
@@ -348,21 +346,26 @@ def main():
     print("Calcolo dati del bilancio idrico in corso...")
     dati = calcola_dati_orto()
     
-    testo_per_ia = f"""
-    -- STASERA (fino a mezzanotte) --
-    - Stress Idrico Stimato SE NON PIOVE: {dati['stress_stasera_senza_pioggia']}
-    - Stress Idrico Stimato SE PIOVE (scenario modelli): {dati['stress_stasera_con_pioggia']}
-    - Probabilità temporali/rovesci STASERA: {dati['prob_pioggia_stasera']}%
+    # Costruzione dinamica del prompt: NASCONDIAMO I DATI SE LA PROBABILITÀ È ZERO
+    testo_per_ia = "-- STASERA (fino a mezzanotte) --\n"
+    if dati['prob_pioggia_stasera'] > 0:
+        testo_per_ia += f"- Stress Idrico Stimato SE NON PIOVE: {dati['stress_stasera_senza_pioggia']}\n"
+        testo_per_ia += f"- Stress Idrico Stimato SE PIOVE (scenario modelli): {dati['stress_stasera_con_pioggia']}\n"
+        testo_per_ia += f"- Probabilità temporali/rovesci STASERA: {dati['prob_pioggia_stasera']}%\n\n"
+    else:
+        testo_per_ia += f"- Stress Idrico Stimato per STASERA: {dati['stress_stasera_senza_pioggia']}\n\n"
 
-    -- DOMANI --
-    - Stress Idrico Previsto SE NON PIOVE (scenario peggiore): {dati['stress_domani_senza_pioggia']}
-    - Stress Idrico Previsto SE PIOVE (scenario modelli): {dati['stress_domani_con_pioggia']}
-    - Probabilità temporali/rovesci DOMANI: {dati['prob_pioggia_domani']}%
+    testo_per_ia += "-- DOMANI --\n"
+    if dati['prob_pioggia_domani'] > 0:
+        testo_per_ia += f"- Stress Idrico Previsto SE NON PIOVE (scenario peggiore): {dati['stress_domani_senza_pioggia']}\n"
+        testo_per_ia += f"- Stress Idrico Previsto SE PIOVE (scenario modelli): {dati['stress_domani_con_pioggia']}\n"
+        testo_per_ia += f"- Probabilità temporali/rovesci DOMANI: {dati['prob_pioggia_domani']}%\n\n"
+    else:
+        testo_per_ia += f"- Stress Idrico Previsto per DOMANI: {dati['stress_domani_senza_pioggia']}\n\n"
 
-    -- INFO UTENTE --
-    - L'utente ha segnalato di aver innaffiato l'orto OGGI? {dati['ha_bagnato_oggi']}
-    - Giorni trascorsi dall'ultima innaffiatura o pioggia (se il valore è 0 o Sconosciuto, non inserire la frase dei giorni): {dati['giorni_senza_acqua']}
-    """
+    testo_per_ia += "-- INFO UTENTE --\n"
+    testo_per_ia += f"- L'utente ha segnalato di aver innaffiato l'orto OGGI? {dati['ha_bagnato_oggi']}\n"
+    testo_per_ia += f"- Giorni trascorsi dall'ultima innaffiatura o pioggia (se il valore è 0 o Sconosciuto, non inserire la frase dei giorni): {dati['giorni_senza_acqua']}\n"
     
     print("Elaborazione del bollettino tramite Groq AI...")
     bollettino_ai = interpella_groq(testo_per_ia)
