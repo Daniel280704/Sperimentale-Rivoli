@@ -6,6 +6,9 @@ on:
     - cron: '18 12-16 * * *'
   workflow_dispatch: 
 
+permissions:
+  contents: write
+
 jobs:
   bollettino_orto:
     runs-on: ubuntu-latest
@@ -28,3 +31,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python stress_idrico_orto.py
+
+      - name: Salva memoria lucchetto e irrigazione
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add lock_orto.txt tg_offset_orto.txt ultima_innaffiatura.txt || true
+          git commit -m "Aggiornamento memoria bot orto" || true
+          git push || true
