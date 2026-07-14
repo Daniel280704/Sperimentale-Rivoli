@@ -335,11 +335,36 @@ def main():
         if estate:
             if num_1mm >= 3:
                 instabilita = "un aumento dell'instabilità"
-                probabilita = int(round(pct_1mm))
+                
+                # Finestra estiva (±3 ore): cerca il picco di probabilità del temporale
+                inizio_finestra = max(0, i - 3)
+                fine_finestra = min(len(orari), i + 4) # +4 perché l'ultimo è escluso
+                
+                max_pct_intorno = 0
+                for j in range(inizio_finestra, fine_finestra):
+                    spaghi_j = [h_eps[k][j] for k in h_eps if k.startswith('precipitation_member')]
+                    pct_j = percentuale_superamento(spaghi_j, 1.0)
+                    if pct_j > max_pct_intorno:
+                        max_pct_intorno = pct_j
+                        
+                probabilita = int(round(max_pct_intorno))
+                
         elif inverno:
             if pct_1mm >= 75:
                 perturbazione = True
-                probabilita = int(round(pct_1mm))
+                
+                # Finestra invernale (±2 ore): cerca il picco della perturbazione
+                inizio_finestra = max(0, i - 2)
+                fine_finestra = min(len(orari), i + 3)
+                
+                max_pct_intorno = 0
+                for j in range(inizio_finestra, fine_finestra):
+                    spaghi_j = [h_eps[k][j] for k in h_eps if k.startswith('precipitation_member')]
+                    pct_j = percentuale_superamento(spaghi_j, 1.0)
+                    if pct_j > max_pct_intorno:
+                        max_pct_intorno = pct_j
+                        
+                probabilita = int(round(max_pct_intorno))
 
         tipo_prec = ""
         int_prec = ""
