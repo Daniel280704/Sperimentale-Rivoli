@@ -228,12 +228,21 @@ def main():
         alba_piu_2 = alba + timedelta(hours=2)
         tramonto_meno_2 = tramonto - timedelta(hours=2)
         
-        if ch2_disponibile and h_det_ch2.get('sunshine_duration'):
-            sun_sec = h_det_ch2['sunshine_duration'][i]
-        else:
-            sun_sec = h_det.get('sunshine_duration', [])[i] if i < len(h_det.get('sunshine_duration', [])) else 0
+        # Estrazione sicura del dato di ICON-D2 (convertendo eventuali None in 0)
+        sun_sec_d2 = h_det.get('sunshine_duration', [])[i] if i < len(h_det.get('sunshine_duration', [])) else 0
+        sun_sec_d2 = sun_sec_d2 if sun_sec_d2 is not None else 0
+        
+        # Gestione prudenziale della nuvolosità (prendiamo il modello più pessimista)
+        if ch2_disponibile and h_det_ch2.get('sunshine_duration') and i < len(h_det_ch2['sunshine_duration']):
+            sun_sec_ch2 = h_det_ch2['sunshine_duration'][i]
+            sun_sec_ch2 = sun_sec_ch2 if sun_sec_ch2 is not None else 0
             
-        sun_minuti = (sun_sec or 0) / 60
+            # Scegliamo i secondi di sole MINORI tra i due modelli (cielo più coperto)
+            sun_sec = min(sun_sec_d2, sun_sec_ch2)
+        else:
+            sun_sec = sun_sec_d2
+            
+        sun_minuti = sun_sec / 60
         
         if alba_piu_2 <= ora_dt and ora_dt.hour < 13:
             medie_sole[giorno_idx]['mattino'].append(sun_minuti)
