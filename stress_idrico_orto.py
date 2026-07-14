@@ -295,8 +295,19 @@ def main():
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
+    # Controlliamo prima il pulsante Telegram per non perdere l'innaffiatura!
     if token:
         controlla_pulsante_telegram(token)
+
+    # Controllo semaforo: se ha già mandato il bollettino oggi, si ferma
+    FILE_LOCK = "lock_orto.txt"
+    oggi_str_lock = get_rome_time().strftime("%Y-%m-%d")
+    
+    if os.path.exists(FILE_LOCK):
+        with open(FILE_LOCK, "r") as f:
+            if f.read().strip() == oggi_str_lock:
+                print("✅ Bollettino idrico orto già inviato oggi. Esecuzione terminata per evitare messaggi doppi.")
+                sys.exit(0)
 
     print("Calcolo dati del bilancio idrico in corso...")
     dati = calcola_dati_orto()
@@ -328,6 +339,11 @@ def main():
                 requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
                               data={"chat_id": chat_id, "text": messaggio_finale, "parse_mode": "HTML", "reply_markup": json.dumps(tastiera)})
                 print("Bollettino agrometeorologico inviato con successo!")
+                
+                # Scrittura del semaforo dopo il successo
+                with open(FILE_LOCK, "w") as f:
+                    f.write(oggi_str_lock)
+                    
             except Exception as e:
                 print(f"Errore invio Telegram: {e}")
     else:
