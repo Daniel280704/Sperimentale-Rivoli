@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as mticker
 
-LAT = 45.07347491421504
-LON = 7.543461388723449
+LAT = 45.13473001892363
+LON = 7.773898554435003
 
 ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
