@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
 
-# Coordinate esatte estratte dalla chiamata API
+# Coordinate esatte - Rivoli
 LATITUDE = 45.07347491421504
 LONGITUDE = 7.543461388723449
 
 FILE_HASH = "ultimo_hash_ecmwf.txt"
-FILENAME = "ecmwf_thermal_profile.png"
+FILENAME = "ecmwf_thermal_geopot_profile.png"
 
 def verifica_dati_nuovi(hourly_data: dict) -> bool:
     """Verifica se i dati scaricati sono cambiati rispetto all'ultima esecuzione."""
@@ -33,25 +33,35 @@ def verifica_dati_nuovi(hourly_data: dict) -> bool:
     return is_nuovo
 
 def main():
-    print("Scaricamento dati ECMWF a 14 giorni (Ensemble Mean & Spread) in corso...")
+    print("Scaricamento dati ECMWF a 14 giorni (Temp + Geopotenziale) in corso...")
     
-    LEVELS = ["2m", "925hPa", "850hPa", "700hPa", "600hPa", "500hPa", "400hPa", "300hPa"]
-    
-    VARIABLES = []
-    for lvl in LEVELS:
-        VARIABLES.append(f"temperature_{lvl}")
-        VARIABLES.append(f"temperature_{lvl}_spread")
-
+    # URL e parametri richiesti
     URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
+    
+    # Costruiamo la lista di variabili come da tua richiesta
+    var_list = [
+        "geopotential_height_925hPa", "geopotential_height_925hPa_spread",
+        "geopotential_height_850hPa", "geopotential_height_850hPa_spread",
+        "geopotential_height_700hPa", "geopotential_height_700hPa_spread",
+        "geopotential_height_600hPa", "geopotential_height_600hPa_spread",
+        "geopotential_height_500hPa", "geopotential_height_500hPa_spread",
+        "temperature_2m", "temperature_2m_spread",
+        "temperature_925hPa", "temperature_925hPa_spread",
+        "temperature_850hPa", "temperature_850hPa_spread",
+        "temperature_700hPa", "temperature_700hPa_spread",
+        "temperature_600hPa", "temperature_600hPa_spread",
+        "temperature_500hPa", "temperature_500hPa_spread"
+    ]
+
     params = {
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
-        "hourly": ",".join(VARIABLES),
+        "hourly": ",".join(var_list),
         "models": "ecmwf_ifs025_ensemble_mean",
         "timezone": "Europe/Rome",
-        "forecast_days": 14  # Orizzonte esteso a 14 giorni
+        "forecast_days": 14
     }
-    headers = {"User-Agent": "MeteoBot-EnsemblePlotter/4.0"}
+    headers = {"User-Agent": "MeteoBot-EnsemblePlotter/5.0"}
 
     try:
         response = requests.get(URL, params=params, headers=headers)
@@ -63,13 +73,11 @@ def main():
         sys.exit(1)
 
     is_nuovo = verifica_dati_nuovi(hourly)
-    
     if not is_nuovo:
-        print("ℹ️ Nessun aggiornamento trovato per ECMWF rispetto all'ultimo invio. Elaborazione fermata.")
+        print("ℹ️ Nessun aggiornamento trovato per ECMWF. Elaborazione fermata.")
         sys.exit(0)
         
     print("ℹ️ Trovati nuovi dati per ECMWF. Generazione del grafico in corso...")
-
     times = pd.to_datetime(hourly.get("time"))
 
     def get_stats(var_name):
@@ -84,62 +92,86 @@ def main():
         
         min_arr = mean_arr - spread_arr
         max_arr = mean_arr + spread_arr
-        
         return mean_arr, min_arr, max_arr
 
-    # --- CREAZIONE DEL GRAFICO ---
-    # Aumentato il numero di subplot a 5 e l'altezza complessiva dell'immagine (figsize) a 22
-    fig, axs = plt.subplots(5, 1, figsize=(12, 22), sharex=True)
-    fig.suptitle("Analisi Ensemble ECMWF (14 Giorni) - Profilo Termico Verticale", fontsize=16, fontweight='bold', y=0.91)
+    # --- CONFIGURAZIONE GRAFICI ---
+    # 6 subplot, aumentiamo l'altezza a 26 pollici per far respirare i dati
+    fig, axs = plt.subplots(6, 1, figsize=(13, 26), sharex=True)
+    fig.suptitle("Analisi ECMWF (14 Giorni) - Temperatura e Geopotenziale", fontsize=18, fontweight='bold', y=0.91)
 
-    # Struttura modulare: ogni lista interna rappresenta i dati da stampare su un singolo subplot
-    plot_groups = [
-        # Plot 1: Solo 2 metri
-        [{"var": "temperature_2m", "label": "2 m", "color": "#d62728"}],
-        # Plot 2: Solo 925 hPa
-        [{"var": "temperature_925hPa", "label": "925 hPa", "color": "#ff7f0e"}],
-        # Plot 3: 850 hPa e 700 hPa
-        [{"var": "temperature_850hPa", "label": "850 hPa", "color": "#8c564b"},
-         {"var": "temperature_700hPa", "label": "700 hPa", "color": "#e377c2"}],
-        # Plot 4: 600 hPa e 500 hPa
-        [{"var": "temperature_600hPa", "label": "600 hPa", "color": "#2ca02c"},
-         {"var": "temperature_500hPa", "label": "500 hPa", "color": "#1f77b4"}],
-        # Plot 5: 400 hPa e 300 hPa
-        [{"var": "temperature_400hPa", "label": "400 hPa", "color": "#9467bd"},
-         {"var": "temperature_300hPa", "label": "300 hPa", "color": "#17becf"}]
+    levels_config = [
+        {"lvl": "2m",     "t_color": "#d62728", "z_color": None},        # Rosso acceso
+        {"lvl": "925hPa", "t_color": "#ff7f0e", "z_color": "#1f77b4"},   # Arancione / Blu
+        {"lvl": "850hPa", "t_color": "#8c564b", "z_color": "#2ca02c"},   # Marrone / Verde
+        {"lvl": "700hPa", "t_color": "#e377c2", "z_color": "#9467bd"},   # Rosa / Viola
+        {"lvl": "600hPa", "t_color": "#d62728", "z_color": "#17becf"},   # Cremisi / Ciano
+        {"lvl": "500hPa", "t_color": "#ff7f0e", "z_color": "#7f7f7f"}    # Arancione / Grigio
     ]
 
     plotted_something = False
 
-    for ax, group in zip(axs, plot_groups):
-        for line in group:
-            mean_val, min_val, max_val = get_stats(line["var"])
-            if mean_val is not None:
-                ax.plot(times, mean_val, label=f'Media {line["label"]}', color=line["color"], linewidth=2)
-                ax.fill_between(times, min_val, max_val, color=line["color"], alpha=0.15, label=f'Spread {line["label"]}')
-                plotted_something = True
-                
-        ax.set_ylabel("Temperatura (°C)", fontsize=11)
+    for ax, config in zip(axs, levels_config):
+        lvl = config["lvl"]
+        
+        # --- PLOT TEMPERATURA (Asse Y sinistro, in alto) ---
+        t_mean, t_min, t_max = get_stats(f"temperature_{lvl}")
+        if t_mean is not None:
+            l1 = ax.plot(times, t_mean, label=f'Temp {lvl}', color=config["t_color"], linewidth=2.2)
+            ax.fill_between(times, t_min, t_max, color=config["t_color"], alpha=0.15)
+            plotted_something = True
+            
+            # Calcolo dei limiti asimmetrici per spingere la temperatura IN ALTO
+            abs_t_min, abs_t_max = np.nanmin(t_min), np.nanmax(t_max)
+            t_range = abs_t_max - abs_t_min if (abs_t_max - abs_t_min) > 0 else 5.0
+            
+            # Se c'è anche il geopotenziale, lasciamo uno spazio vuoto enorme in basso (1.0 * range)
+            # Se è solo a 2m, centriamo normalmente
+            pad_bottom = t_range * 1.2 if config["z_color"] else t_range * 0.1
+            ax.set_ylim(abs_t_min - pad_bottom, abs_t_max + t_range * 0.1)
+            
+        ax.set_ylabel(f"Temperatura °C ({lvl})", fontsize=11, color=config["t_color"])
+        ax.tick_params(axis='y', labelcolor=config["t_color"])
         ax.grid(True, linestyle='--', alpha=0.5)
-        ax.legend(loc='upper right', fontsize=9, ncol=2)
+
+        # --- PLOT GEOPOTENZIALE (Asse Y destro, in basso) ---
+        if config["z_color"]:
+            ax2 = ax.twinx()  # Crea il doppio asse Y
+            z_mean, z_min, z_max = get_stats(f"geopotential_height_{lvl}")
+            
+            if z_mean is not None:
+                l2 = ax2.plot(times, z_mean, label=f'Geopotenziale {lvl}', color=config["z_color"], linewidth=2.2)
+                ax2.fill_between(times, z_min, z_max, color=config["z_color"], alpha=0.15)
+                
+                # Calcolo dei limiti asimmetrici per spingere il geopotenziale IN BASSO
+                abs_z_min, abs_z_max = np.nanmin(z_min), np.nanmax(z_max)
+                z_range = abs_z_max - abs_z_min if (abs_z_max - abs_z_min) > 0 else 50.0
+                
+                # Lasciamo uno spazio vuoto enorme in alto (1.5 * range) perché lì c'è la temperatura
+                ax2.set_ylim(abs_z_min - z_range * 0.1, abs_z_max + z_range * 1.8)
+                
+            ax2.set_ylabel(f"Altezza Geop. metri ({lvl})", fontsize=11, color=config["z_color"])
+            ax2.tick_params(axis='y', labelcolor=config["z_color"])
+            
+            # Uniamo le legende dei due assi
+            lines_1, labels_1 = ax.get_legend_handles_labels()
+            lines_2, labels_2 = ax2.get_legend_handles_labels()
+            ax.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right', fontsize=9, ncol=2)
+        else:
+            ax.legend(loc='upper right', fontsize=9)
 
     if not plotted_something:
         print("❌ ERRORE CRITICO: Non ho potuto tracciare nessuna linea. Dati API non validi.")
         sys.exit(1)
 
-    # Formattazione dell'asse X ottimizzata per 14 giorni
+    # Formattazione dell'asse X (14 Giorni)
     axs[-1].set_xlabel("Data (Fuso Orario Locale)", fontsize=11)
-    
-    # Imposta una tacca principale ogni giorno a mezzanotte
     axs[-1].xaxis.set_major_locator(mdates.DayLocator())
     axs[-1].xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
-    
-    # Imposta tacche secondarie ogni 12 ore (mezzogiorno) per guidare l'occhio senza sovraffollare
     axs[-1].xaxis.set_minor_locator(mdates.HourLocator(byhour=[12]))
     axs[-1].grid(which="minor", axis="x", alpha=0.3, linestyle=':')
 
     plt.xticks(rotation=45)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(FILENAME, dpi=200, bbox_inches='tight')
     print(f"Grafico salvato come {FILENAME}")
 
@@ -150,12 +182,12 @@ def main():
     if token and chat_id:
         print("Invio grafico su Telegram...")
         url_telegram = f"https://api.telegram.org/bot{token}/sendPhoto"
-        
         ora_esecuzione = datetime.now().strftime("%d/%m/%Y alle %H:%M")
+        
         caption = (
-            "📈 <b>Aggiornamento Profilo Termico Verticale ECMWF (14 Giorni)</b>\n"
-            "Analisi ensemble da 2m a 300hPa.\n"
-            "<i>Le aree colorate indicano lo spread (deviazione standard) attorno alla media.</i>\n\n"
+            "📈 <b>Meteogramma Termodinamico ECMWF (14 Giorni)</b>\n"
+            "Associazione Temperature (°C) e Altezze Geopotenziali (m).\n"
+            "<i>Aree colorate: deviazione standard (spread) dell'ensemble.</i>\n\n"
             f"<i>Aggiornato il {ora_esecuzione}</i>"
         )
         
