@@ -33,10 +33,11 @@ def verifica_dati_nuovi(hourly_data: dict) -> bool:
     return is_nuovo
 
 def main():
-    print("Scaricamento dati ECMWF a 14 giorni (Temp + Geopotenziale) in corso...")
+    print("Scaricamento dati ECMWF a 14 giorni (Temp + Geopotenziale + Dew Point) in corso...")
     
     URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
     
+    # Lista variabili aggiornata con il dew point a 2m
     var_list = [
         "geopotential_height_925hPa", "geopotential_height_925hPa_spread",
         "geopotential_height_850hPa", "geopotential_height_850hPa_spread",
@@ -44,6 +45,7 @@ def main():
         "geopotential_height_600hPa", "geopotential_height_600hPa_spread",
         "geopotential_height_500hPa", "geopotential_height_500hPa_spread",
         "temperature_2m", "temperature_2m_spread",
+        "dew_point_2m", "dew_point_2m_spread",
         "temperature_925hPa", "temperature_925hPa_spread",
         "temperature_850hPa", "temperature_850hPa_spread",
         "temperature_700hPa", "temperature_700hPa_spread",
@@ -59,7 +61,7 @@ def main():
         "timezone": "Europe/Rome",
         "forecast_days": 14
     }
-    headers = {"User-Agent": "MeteoBot-EnsemblePlotter/6.1"}
+    headers = {"User-Agent": "MeteoBot-EnsemblePlotter/6.2"}
 
     try:
         response = requests.get(URL, params=params, headers=headers)
@@ -94,15 +96,15 @@ def main():
 
     # --- CONFIGURAZIONE GRAFICI ---
     fig, axs = plt.subplots(6, 1, figsize=(13, 26), sharex=True)
-    # IL TITOLO SUPERIORE È STATO RIMOSSO DA QUI
 
     levels_config = [
-        {"lvl": "2m",     "color": "#d62728", "has_z": False}, # Rosso
-        {"lvl": "925hPa", "color": "#ff7f0e", "has_z": True},  # Arancione
-        {"lvl": "850hPa", "color": "#8c564b", "has_z": True},  # Marrone
-        {"lvl": "700hPa", "color": "#e377c2", "has_z": True},  # Rosa
-        {"lvl": "600hPa", "color": "#2ca02c", "has_z": True},  # Verde
-        {"lvl": "500hPa", "color": "#1f77b4", "has_z": True}   # Blu
+        # 2m ora ha il flag has_dew abilitato
+        {"lvl": "2m",     "color": "#d62728", "has_z": False, "has_dew": True}, 
+        {"lvl": "925hPa", "color": "#ff7f0e", "has_z": True,  "has_dew": False},  
+        {"lvl": "850hPa", "color": "#8c564b", "has_z": True,  "has_dew": False},  
+        {"lvl": "700hPa", "color": "#e377c2", "has_z": True,  "has_dew": False},  
+        {"lvl": "600hPa", "color": "#2ca02c", "has_z": True,  "has_dew": False},  
+        {"lvl": "500hPa", "color": "#1f77b4", "has_z": True,  "has_dew": False}   
     ]
 
     plotted_something = False
@@ -111,19 +113,33 @@ def main():
         lvl = config["lvl"]
         base_color = config["color"]
         
-        # --- PLOT TEMPERATURA (Asse Y sinistro, in alto, Linea Continua) ---
+        # --- PLOT TEMPERATURA (Asse Y sinistro, Linea Continua) ---
         t_mean, t_min, t_max = get_stats(f"temperature_{lvl}")
         if t_mean is not None:
             l1 = ax.plot(times, t_mean, label=f'Temp {lvl}', color=base_color, linewidth=2.2, linestyle='-')
             ax.fill_between(times, t_min, t_max, color=base_color, alpha=0.15)
             plotted_something = True
             
-            # Calcolo dei limiti asimmetrici per spingere la temperatura IN ALTO
-            abs_t_min, abs_t_max = np.nanmin(t_min), np.nanmax(t_max)
-            t_range = abs_t_max - abs_t_min if (abs_t_max - abs_t_min) > 0 else 5.0
+            # Inizializziamo i limiti base sulla temperatura
+            abs_y_min, abs_y_max = np.nanmin(t_min), np.nanmax(t_max)
             
-            pad_bottom = t_range * 1.2 if config["has_z"] else t_range * 0.1
-            ax.set_ylim(abs_t_min - pad_bottom, abs_t_max + t_range * 0.1)
+            # --- PLOT DEW POINT (Solo a 2m, stesso asse Y, Linea Tratteggiata) ---
+            if config.get("has_dew"):
+                d_mean, d_min, d_max = get_stats(f"dew_point_{lvl}")
+                if d_mean is not None:
+                    ax.plot(times, d_mean, label=f'Dew Point {lvl}', color=base_color, linewidth=2.2, linestyle='--')
+                    # Usiamo un alpha leggero (0.08) come facciamo per il geopotenziale
+                    ax.fill_between(times, d_min, d_max, color=base_color, alpha=0.08) 
+                    
+                    # Estendiamo i limiti dell'asse verso il basso per ospitare il Dew Point
+                    abs_y_min = min(abs_y_min, np.nanmin(d_min))
+                    abs_y_max = max(abs_y_max, np.nanmax(d_max))
+            
+            y_range = abs_y_max - abs_y_min if (abs_y_max - abs_y_min) > 0 else 5.0
+            
+            # Padding inferiore enorme solo se c'è un geopotenziale in arrivo sull'asse destro
+            pad_bottom = y_range * 1.2 if config["has_z"] else y_range * 0.1
+            ax.set_ylim(abs_y_min - pad_bottom, abs_y_max + y_range * 0.1)
             
         ax.set_ylabel(f"Temperatura °C ({lvl})", fontsize=11, color=base_color)
         ax.tick_params(axis='y', labelcolor=base_color)
@@ -138,7 +154,6 @@ def main():
                 l2 = ax2.plot(times, z_mean, label=f'Geopotenziale {lvl}', color=base_color, linewidth=2.2, linestyle='--')
                 ax2.fill_between(times, z_min, z_max, color=base_color, alpha=0.08)
                 
-                # Calcolo dei limiti asimmetrici per spingere il geopotenziale IN BASSO
                 abs_z_min, abs_z_max = np.nanmin(z_min), np.nanmax(z_max)
                 z_range = abs_z_max - abs_z_min if (abs_z_max - abs_z_min) > 0 else 50.0
                 
@@ -152,14 +167,14 @@ def main():
             lines_2, labels_2 = ax2.get_legend_handles_labels()
             ax.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right', fontsize=9, ncol=2)
         else:
-            ax.legend(loc='upper right', fontsize=9)
+            ax.legend(loc='upper right', fontsize=9, ncol=2 if config.get("has_dew") else 1)
 
     if not plotted_something:
         print("❌ ERRORE CRITICO: Non ho potuto tracciare nessuna linea. Dati API non validi.")
         sys.exit(1)
 
-    # Formattazione dell'asse X (14 Giorni) + NUOVO TITOLO IN BASSO
-    titolo_in_basso = "Analisi ECMWF (14 Giorni) - Temperatura e Geopotenziale   |   Data e Ora (Fuso Orario Locale)"
+    # Formattazione dell'asse X (14 Giorni) + TITOLO IN BASSO
+    titolo_in_basso = "Analisi ECMWF (14 Giorni) - Profilo Termodinamico Verticale   |   Data e Ora (Fuso Orario Locale)"
     axs[-1].set_xlabel(titolo_in_basso, fontsize=13, fontweight='bold', labelpad=15)
     
     axs[-1].xaxis.set_major_locator(mdates.DayLocator())
@@ -168,7 +183,6 @@ def main():
     axs[-1].grid(which="minor", axis="x", alpha=0.3, linestyle=':')
 
     plt.xticks(rotation=45)
-    # Rimosso il rect dalla tight_layout per sfruttare l'area fino in cima
     plt.tight_layout()
     plt.savefig(FILENAME, dpi=200, bbox_inches='tight')
     print(f"Grafico salvato come {FILENAME}")
@@ -184,7 +198,7 @@ def main():
         
         caption = (
             "📈 <b>Meteogramma Termodinamico ECMWF (14 Giorni)</b>\n"
-            "Associazione Temperature (linea continua) e Altezze Geopotenziali (linea tratteggiata).\n"
+            "Temperature (linea continua) e Altezze Geopotenziali / Dew Point (linea tratteggiata).\n"
             "<i>Aree colorate: deviazione standard (spread) dell'ensemble.</i>\n\n"
             f"<i>Aggiornato il {ora_esecuzione}</i>"
         )
