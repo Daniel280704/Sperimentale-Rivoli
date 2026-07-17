@@ -32,7 +32,7 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python plot_ecmwf_telegram.py
+        run: python ecmwf.py
 
       - name: Salva il file hash dei dati ECMWF (Commit & Push)
         run: |
