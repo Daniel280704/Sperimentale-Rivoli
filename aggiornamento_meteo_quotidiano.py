@@ -85,7 +85,7 @@ def get_disagio_caldo(t_aria, dew_point):
     elif t_aria >= 32 and dew_point >= 8:  return 1, "(disagio lieve 🟡)"
     elif t_aria >= 30 and dew_point >= 11: return 1, "(disagio lieve 🟡)"
     elif t_aria >= 28 and dew_point >= 13: return 1, "(disagio lieve 🟡)"
-    elif t_aria >= 26 Haus dew_point >= 15: return 1, "(disagio lieve 🟡)"
+    elif t_aria >= 26 and dew_point >= 15: return 1, "(disagio lieve 🟡)"
     elif t_aria >= 24 and dew_point >= 17: return 1, "(disagio lieve 🟡)"
     elif t_aria >= 22 and dew_point >= 19: return 1, "(disagio lieve 🟡)"
     return 0, ""
