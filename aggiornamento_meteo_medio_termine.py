@@ -8,8 +8,8 @@ from collections import Counter
 from datetime import datetime, timedelta
 from groq import Groq
 
-LAT = 45.07347491421504
-LON = 7.543461388723449
+LAT = 45.0736
+LON = 7.5434
 
 GIORNI_IT = {0: "lunedì", 1: "martedì", 2: "mercoledì", 3: "giovedì", 4: "venerdì", 5: "sabato", 6: "domenica"}
 MESI_IT = {1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 
@@ -294,14 +294,19 @@ def main():
         sd_i = snow_depth_avg[i] if i < len(snow_depth_avg) else 0
         if sd_i > dg['max_snow_depth']: dg['max_snow_depth'] = sd_i
 
-        prec_tot = rain_avg[i] + snow_avg[i]
-        if prec_tot >= 1.0:
+        # Rolling window per le precipitazioni (4 ore)
+        idx_start = max(0, i - 1)
+        idx_end = min(len(orari), i + 3)
+        prec_4h = sum((rain_avg[j] + snow_avg[j]) for j in range(idx_start, idx_end) if j < len(rain_avg) and j < len(snow_avg))
+        prec_oraria = rain_avg[i] + snow_avg[i]
+        
+        if prec_4h >= 1.0 and prec_oraria > 0.0:
             if dust_val > 25: dg['ha_sabbia'] = True
             if dg['ora_inizio_p'] is None: dg['ora_inizio_p'] = ora_solare
             dg['ora_fine_p'] = ora_solare
-            if prec_tot > dg['picco_p_mm']:
-                dg['picco_p_mm'], dg['ora_picco_p'] = prec_tot, ora_solare
-                if snow_avg[i] > rain_avg[i] and snow_avg[i] > 0.5: dg['tipo_p'] = "nevicate"
+            if prec_oraria > dg['picco_p_mm']:
+                dg['picco_p_mm'], dg['ora_picco_p'] = prec_oraria, ora_solare
+                if snow_avg[i] > rain_avg[i] and snow_avg[i] > 0.1: dg['tipo_p'] = "nevicate"
                 elif (estate and cape_avg[i] > 400): dg['tipo_p'] = "rovesci o temporali"
                 elif estate: dg['tipo_p'] = "rovesci"
                 else: dg['tipo_p'] = "piogge"
@@ -331,7 +336,7 @@ def main():
         
         is_instabile = (estate and max([cape_avg[i] for i in indici_validi if (datetime.fromisoformat(orari[i]).date() - dt_oggi.date()).days == g] + [0]) > 400)
         soglia_precip = 15 if is_instabile else 50
-        if dg['prob_max'] >= soglia_precip and dg['picco_p_mm'] >= 1.0: dg['ha_precip'] = True
+        if dg['prob_max'] >= soglia_precip and dg['ora_inizio_p'] is not None: dg['ha_precip'] = True
             
         testo_per_ia += f"GIORNO: {giorni_str[g]}\n"
         gelate_str = " (possibili gelate)" if dg['ha_gelate'] else ""
@@ -340,9 +345,9 @@ def main():
         cielo_txt = ""
         if dg['nebbie']: cielo_txt += f"Possibili banchi di nebbia {', '.join(dg['nebbie'])}, per il resto "
         if c_mat == c_pom:
-            cielo_txt += f"cielo in prevalenza {c_mat} per gran parte del giorno."
-        else:
-            cielo_txt += f"cielo in prevalenza {c_mat} al mattino, tendente a {c_pom} nel pomeriggio."
+            if c_mat in ["sereno", "coperto"]: cielo_txt += f"cielo {c_mat} per gran parte del giorno."
+            else: cielo_txt += f"cielo in prevalenza {c_mat} per gran parte del giorno."
+        else: cielo_txt += f"cielo in prevalenza {c_mat} al mattino, tendente a {c_pom} nel pomeriggio."
         testo_per_ia += f"- Cielo: {cielo_txt}\n"
         
         if dg['ha_precip']:
@@ -360,7 +365,10 @@ def main():
                 elif dg['picco_p_mm'] >= 4: i_prec = "forti"
                 elif dg['picco_p_mm'] >= 2: i_prec = "moderate"
                 
-                testo_per_ia += f"- Precipitazioni: Previste {i_prec} {dg['tipo_p']} ({p_round}%){sabbia_str}."
+                picco_val = arrotonda_intero(dg['picco_p_mm'])
+                picco_txt = f"circa {picco_val} mm/h" if picco_val > 0 else "inferiore a 1 mm/h"
+                
+                testo_per_ia += f"- Precipitazioni: Previste {dg['tipo_p']} {i_prec} ({p_round}%){sabbia_str}."
                 if dg['ora_inizio_p'] == dg['ora_fine_p']: testo_per_ia += f" Isolate {ottieni_fascia_oraria(dg['ora_inizio_p'])} (ore {dg['ora_inizio_p']})."
                 else: testo_per_ia += f" Inizio {ottieni_fascia_oraria(dg['ora_inizio_p'])} (ore {dg['ora_inizio_p']}), intensificazione con picco {ottieni_fascia_oraria(dg['ora_picco_p'])} (ore {dg['ora_picco_p']}), attenuazione e cessazione {ottieni_fascia_oraria(dg['ora_fine_p'])} (ore {dg['ora_fine_p']})."
                 
@@ -372,7 +380,7 @@ def main():
                     else: s_str = "abbondante imbiancata"
                     testo_per_ia += f" Accumulo nevoso stimato: {arrotonda_intero(dg['snow_sum'])} cm ({s_str}).\n"
                 else:
-                    testo_per_ia += f" Accumulo pluviometrico stimato sui {arrotonda_intero(dg['rain_sum'] + dg['snow_sum'])} mm.\n"
+                    testo_per_ia += f" Accumulo pluviometrico stimato sui {arrotonda_intero(dg['rain_sum'] + dg['snow_sum'])} mm. Intensità massima stimata: {picco_txt}.\n"
 
         if dg['w_gst_max'] >= 50:
             int_vento = "tempestosa" if dg['w_gst_max'] >= 70 else "forte"
