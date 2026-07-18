@@ -88,7 +88,7 @@ def arrotonda_tondo(valore):
     """Arrotonda alla decina più vicina se >= 10, altrimenti all'intero più vicino"""
     if valore is None: return 0
     if valore >= 10:
-        return int((valore + 5) // 10 * 10)
+        return int(round(valore / 10.0) * 10)
     else:
         return int(round(valore))
 
@@ -119,10 +119,10 @@ def interpella_groq(dati_testuali, oggi_str, giorni_str):
     Ti fornirò un elenco dei "fatti salienti" già calcolati e processati. Il tuo compito è trasformare questi appunti in un testo discorsivo continuo.
     
     REGOLE FERREE (PENA IL FALLIMENTO):
-    1. TITOLO: Inizia ESATTAMENTE con: <b>Aggiornamento meteo a medio termine di {oggi_str}</b>. Lascia una riga vuota.
-    2. STRUTTURA: Tre paragrafi, uno per {giorni_str[2]}, uno per {giorni_str[3]}, uno per {giorni_str[4]}. Non usare righe vuote tra i paragrafi.
+    1. TITOLO: Inizia ESATTAMENTE con: <b>Aggiornamento meteo a medio termine di {oggi_str}</b>. Lascia una riga vuota tra il titolo e il testo.
+    2. STRUTTURA: Tre paragrafi, uno per {giorni_str[2]}, uno per {giorni_str[3]}, uno per {giorni_str[4]}. Lascia ESATTAMENTE una riga vuota tra un paragrafo e l'altro.
     3. STILE TEMPERATURE E DISAGIO: Usa sempre il singolare per le temperature (es. "una temperatura minima di 20°C e una massima di 34°C"). Il disagio termico va inserito tra parentesi, indicando solo il livello e l'emoji (es. "Il picco di disagio termico (marcato 🟠) sarà registrato nel tardo pomeriggio").
-    4. STILE VENTO E PRECIPITAZIONI: Indica le raffiche di vento tra parentesi (es. "con le raffiche massime previste nella notte (attorno ai 40 km/h)"). Fai lo stesso per gli accumuli e le intensità di pioggia/neve, usando ESATTAMENTE i numeri arrotondati che ti fornisco.
+    4. STILE VENTO E PRECIPITAZIONI: Se indichi raffiche, mettile tra parentesi (es. "con le raffiche massime previste nella notte (attorno ai 40 km/h)"). Se nei dati leggi "ventilazione blanda", scrivi ESATTAMENTE "La ventilazione sarà blanda." senza inventare orari o raffiche. Fai lo stesso per pioggia/neve, usando i numeri arrotondati che ti fornisco.
     5. ORARI E PREPOSIZIONI: Copia e usa ESATTAMENTE le preposizioni articolate di tempo fornite nei dati (es. "nel pomeriggio", "nella notte", "nella tarda mattinata"). È severamente vietato scrivere "in notte" o "in pomeriggio".
     6. DIVIETO ASSOLUTO DI COMMENTI SOGGETTIVI E RIEMPITIVI: NON aggiungere MAI deduzioni o frasi conclusive soggettive. È ASSOLUTAMENTE VIETATO usare espressioni come "offrendo condizioni ideali", "senza compromettere la piacevolezza", "rendendo la giornata scomoda", "senza influenzare significativamente". Il tono deve essere asciutto, puramente descrittivo e strettamente meteorologico.
     7. FORMATTAZIONE: NESSUN asterisco (*), underscore (_) o markdown. Usa solo il tag <b> per il titolo.
@@ -373,6 +373,9 @@ def main():
             elif dg['w_gst_max'] >= 50: int_vento = "forte"
             
             txt_vento = f"- Vento: ventilazione {int_vento}. Raffiche massime previste {ottieni_fascia_oraria(dg['ora_w_gst_max'])} (attorno ai {arrotonda_tondo(dg['w_gst_max'])} km/h)."
+            testo_per_ia += txt_vento + "\n"
+        else:
+            txt_vento = "- Vento: ventilazione blanda."
             testo_per_ia += txt_vento + "\n"
             
         if dg['gelate']: testo_per_ia += f"- Pericolo gelo: {', '.join(dg['gelate'])}\n"
