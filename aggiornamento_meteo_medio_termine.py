@@ -35,7 +35,7 @@ def ottieni_fascia_oraria(ora):
     elif 10 <= ora < 13: return "tarda mattinata"
     elif 13 <= ora < 17: return "pomeriggio"
     elif 17 <= ora < 19: return "tardo pomeriggio"
-    elif 19 <= ora < 22: return "sera"
+    elif 19 <= ora < 22: return "serata"
     else: return "tarda serata"
 
 def calcola_disagio_caldo(t_aria, dew_point):
@@ -81,6 +81,10 @@ def calcola_disagio_freddo(windchill):
     else:
         return ("(nessun disagio o freddo tollerabile 🟢)", 0)
 
+def pulisci_disagio(stringa):
+    """Rimuove testo superfluo per restituire solo la dicitura essenziale, es: 'marcato 🟠'"""
+    return stringa.replace("(disagio ", "").replace("da freddo ", "").replace("(", "").replace(")", "").replace("o caldo tollerabile ", "").replace("o freddo tollerabile ", "").strip()
+
 def media_lista(lista):
     valori_validi = [v for v in lista if v is not None]
     if not valori_validi: return 0
@@ -107,15 +111,15 @@ def interpella_groq(dati_testuali, oggi_str, giorni_str):
     Sei un meteorologo professionista. Il tuo compito è scrivere un bollettino discorsivo, fluido ed elegante per Rivoli (TO) a MEDIO TERMINE.
     Ti fornirò un elenco dei "fatti salienti" già calcolati e processati. Il tuo compito è trasformare questi appunti in un testo discorsivo continuo.
     
-    REGOLE FERREE:
+    REGOLE FERREE (PENA IL FALLIMENTO):
     1. TITOLO: Inizia ESATTAMENTE con: <b>Aggiornamento meteo a medio termine di {oggi_str}</b>. Lascia una riga vuota.
     2. STRUTTURA: Tre paragrafi, uno per {giorni_str[2]}, uno per {giorni_str[3]}, uno per {giorni_str[4]}. Non usare righe vuote tra i paragrafi.
-    3. NO ELENCHI: Trasforma i punti in frasi.
-    4. RISPETTO DELLE FASCE ORARIE: Usa i termini ("prima parte della mattinata", "tardo pomeriggio") indicati.
-    5. DISAGIO TERMICO: Includi SEMPRE l'indicazione del disagio e le sue emoji quando citi il momento più caldo/freddo.
+    3. STILE TEMPERATURE E DISAGIO: Usa sempre il singolare per le temperature (es. "una temperatura minima di 20°C e una massima di 34°C"). Il disagio termico va inserito tra parentesi, indicando solo il livello e l'emoji (es. "Il picco di disagio termico (marcato 🟠) sarà registrato nel tardo pomeriggio").
+    4. STILE VENTO E PRECIPITAZIONI: Indica le raffiche di vento tra parentesi (es. "con le raffiche massime previste nella notte (attorno ai 45 km/h)"). Fai lo stesso per gli accumuli e le intensità di pioggia/neve, usando i numeri forniti.
+    5. ORARI: Privilegia le descrizioni come "tarda mattinata" o "serata". Quando usi un orario numerico fornito nei dati (inizio, fine o picco precipitazioni), scrivilo senza i minuti (es. "alle 21" e NON "alle 21:00").
     6. FLUIDITÀ NUVOLOSITÀ: Usa frasi come "il cielo si presenterà...", senza cacofonie.
-    7. ACCUMULI PREVISTI: Quando presenti, cita gli accumuli di pioggia in mm e quelli di neve in cm. Specifica anche l'eventuale accumulo al suolo per la neve.
-    8. FORMATTAZIONE: NESSUN asterisco (*), underscore (_) o markdown. Usa solo <b> per il titolo.
+    7. DIVIETO ASSOLUTO DI COMMENTI SOGGETTIVI E RIEMPITIVI: NON aggiungere MAI deduzioni o frasi conclusive soggettive. È ASSOLUTAMENTE VIETATO usare espressioni come "offrendo condizioni ideali", "senza compromettere la piacevolezza", "rendendo la giornata scomoda", "senza influenzare significativamente". Il tono deve essere asciutto, puramente descrittivo e strettamente meteorologico.
+    8. FORMATTAZIONE: NESSUN asterisco (*), underscore (_) o markdown. Usa solo il tag <b> per il titolo.
     
     DATI DA TRASFORMARE:
     {dati_testuali}
@@ -220,7 +224,6 @@ def main():
         
         g_data = dati_giorni[giorno_idx]
         
-        # Medie orarie dell'ensemble
         t_media = media_lista([h_eps[k][i] for k in h_eps if k.startswith('temperature_2m_member')])
         dew_media = media_lista([h_eps[k][i] for k in h_eps if k.startswith('dew_point_2m_member')])
         ur_media = media_lista([h_eps[k][i] for k in h_eps if k.startswith('relative_humidity_2m_member')])
@@ -333,40 +336,46 @@ def main():
         dg = dati_giorni[g]
         testo_per_ia += f"GIORNO: {giorni_str[g]}\n"
         
-        testo_per_ia += f"- Temp Minima: {dg['t_min']}°C"
+        testo_per_ia += f"- Temp Minima: {round(dg['t_min'])}°C"
         if dg['ora_t_min'] is not None and dg['ora_t_min'] >= 10:
-            testo_per_ia += f" (raggiunta insolitamente in {ottieni_fascia_oraria(dg['ora_t_min'])})\n"
+            testo_per_ia += f" (raggiunta insolitamente verso le {dg['ora_t_min']}, in {ottieni_fascia_oraria(dg['ora_t_min'])})\n"
         else: testo_per_ia += "\n"
             
-        testo_per_ia += f"- Temp Massima: {dg['t_max']}°C"
+        testo_per_ia += f"- Temp Massima: {round(dg['t_max'])}°C"
         if dg['ora_t_max'] is not None and (dg['ora_t_max'] < 13 or dg['ora_t_max'] >= 19):
-            testo_per_ia += f" (raggiunta insolitamente in {ottieni_fascia_oraria(dg['ora_t_max'])})\n"
+            testo_per_ia += f" (raggiunta insolitamente verso le {dg['ora_t_max']}, in {ottieni_fascia_oraria(dg['ora_t_max'])})\n"
         else: testo_per_ia += "\n"
         
         if dg['livello_disagio_max'] > 0:
-            testo_per_ia += f"- Picco di disagio termico: {dg['stringa_disagio']} registrato in {ottieni_fascia_oraria(dg['ora_disagio_max'])}\n"
+            dis_pulito = pulisci_disagio(dg['stringa_disagio'])
+            testo_per_ia += f"- Picco di disagio termico: ({dis_pulito}) registrato in {ottieni_fascia_oraria(dg['ora_disagio_max'])}\n"
             
         testo_per_ia += f"- Cielo prevalente al mattino: {dg['cielo_mattino']}\n"
         testo_per_ia += f"- Cielo prevalente al pomeriggio: {dg['cielo_pomeriggio']}\n"
         
         if dg['ha_precip']:
             testo_per_ia += f"- Precipitazioni: previste {dg['tipo_p']} con probabilità massima del {dg['prob_max_p']}%.\n"
-            testo_per_ia += f"  Inizio in {ottieni_fascia_oraria(dg['ora_inizio_p'])}, termine in {ottieni_fascia_oraria(dg['ora_fine_p'])} con picco di intensità in {ottieni_fascia_oraria(dg['ora_picco_p'])}.\n"
+            testo_per_ia += f"  Inizio in {ottieni_fascia_oraria(dg['ora_inizio_p'])} (ore {dg['ora_inizio_p']}), termine in {ottieni_fascia_oraria(dg['ora_fine_p'])} (ore {dg['ora_fine_p']}) con picco di intensità in {ottieni_fascia_oraria(dg['ora_picco_p'])} (ore {dg['ora_picco_p']}).\n"
             
             if dg['tipo_p'] == "nevicate" and dg['snow_sum'] > 0:
-                testo_per_ia += f"  Accumulo totale nevoso stimato: {dg['snow_sum']} cm. "
+                testo_per_ia += f"  Accumulo totale nevoso stimato: circa {round(dg['snow_sum'])} cm. "
                 if dg['max_snow_depth'] > 0:
-                    testo_per_ia += f"Deposito massimo previsto al suolo: {dg['max_snow_depth']} cm.\n"
+                    testo_per_ia += f"Deposito massimo previsto al suolo: circa {round(dg['max_snow_depth'])} cm.\n"
                 else: testo_per_ia += "\n"
             elif dg['rain_sum'] > 1.0 and not estate:
-                testo_per_ia += f"  Accumulo pluviometrico giornaliero stimato: {dg['rain_sum']} mm.\n"
+                testo_per_ia += f"  Accumulo pluviometrico giornaliero stimato: circa {round(dg['rain_sum'])} mm.\n"
+            
+            int_prec = "deboli"
+            if dg['picco_p_mm'] > 5: int_prec = "forti"
+            elif dg['picco_p_mm'] >= 2: int_prec = "moderate"
+            testo_per_ia += f"  Intensità massima stimata come {int_prec} (circa {round(dg['picco_p_mm'])} mm/h).\n"
             
         if dg['w_gst_max'] >= 30:
             int_vento = "modesta"
             if dg['w_gst_max'] >= 70: int_vento = "tempestosa"
             elif dg['w_gst_max'] >= 50: int_vento = "forte"
             
-            txt_vento = f"- Vento: ventilazione {int_vento}. Raffiche massime previste in {ottieni_fascia_oraria(dg['ora_w_gst_max'])}."
+            txt_vento = f"- Vento: ventilazione {int_vento}. Raffiche massime previste in {ottieni_fascia_oraria(dg['ora_w_gst_max'])} (attorno ai {round(dg['w_gst_max'])} km/h)."
             if dg['vento_intensificato']: txt_vento += " Si segnala una netta intensificazione delle correnti nel corso di quelle ore."
             testo_per_ia += txt_vento + "\n"
             
