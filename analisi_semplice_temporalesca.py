@@ -363,10 +363,6 @@ def main():
                     "text": messaggio_telegram, 
                     "parse_mode": "HTML"
                 }
-                if thread_id:
-                    payload["message_thread_id"] = thread_id
-
-                res = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data=payload)
                 
                 if res.status_code == 200:
                     print("Messaggio divulgativo inviato con successo su Telegram!")
