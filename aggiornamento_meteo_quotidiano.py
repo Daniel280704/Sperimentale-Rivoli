@@ -157,7 +157,7 @@ def interpella_groq(dati_testuali, oggi_str, domani_str):
     Ti fornirò i "fatti salienti" generati da algoritmi matematici.
     
     REGOLE FERREE (PENA IL FALLIMENTO):
-    1. STRUTTURA VISIVA E IMPAGINAZIONE: Devi rispettare in modo ASSOLUTO questo esatto schema di formattazione. Usa ESATTAMENTE gli spazi indicati qui sotto, senza incollare i testi e senza aggiungere ulteriori righe vuote:
+    1. STRUTTURA VISIVA E IMPAGINAZIONE: Devi rispettare in modo ASSOLUTO questo esatto schema di formattazione. Usa ESATTAMENTE gli spazi indicati qui sotto, senza incollare i testi, senza aggiungere ulteriori righe vuote e senza creare paragrafi extra:
 
 <b>Aggiornamento meteo di {oggi_str}</b>
 
@@ -165,12 +165,13 @@ def interpella_groq(dati_testuali, oggi_str, domani_str):
 
 [Scrivi qui il paragrafo di Domani]
 
-    2. CONTENUTO PARAGRAFI: INIZIA SEMPRE ogni paragrafo citando il giorno contestualizzato e la data (es. "Oggi, {oggi_str}, " oppure "Domani, {domani_str}, ").
-    3. STILE TEMPERATURE E DISAGIO CALDO: Subito dopo la data, per esprimere le temperature usa TASSATIVAMENTE questa struttura al singolare: "la temperatura minima sarà di X °C, mentre la massima raggiungerà i Y °C". Scrivi i valori termici SEMPRE staccando l'unità di misura (es. "20 °C"). DEVI INCLUDERE l'emoji del disagio termico copiandola dai dati (es. "con un disagio marcato 🟠"). Se c'è l'avviso "(possibili gelate)", copialo testualmente dopo la minima.
-    4. CIELO E NEBBIA: Non usare MAI l'avverbio "prevalentemente", usa sempre "in prevalenza". Se nei dati è indicata la nebbia, integrala in maniera fluida con la descrizione della nuvolosità (es. "Al mattino saranno possibili banchi di nebbia, che lasceranno spazio a un cielo in prevalenza poco nuvoloso...").
-    5. STILE VENTO E DISAGIO FREDDO: Se nei dati leggi "La ventilazione sarà blanda" o "La ventilazione sarà da blanda a moderata", scrivi ESATTAMENTE questo. Se è forte, aggancia fluidamente l'emoji e il disagio da freddo al vento se indicato.
-    6. DIVIETO COMMENTI SOGGETTIVI: NON usare MAI espressioni romanzate come "condizioni ideali" o "giornata scomoda". Mantieni un tono tecnico e fattuale. NESSUN asterisco o markdown. Usa un linguaggio naturale per integrare le varie fasi di precipitazione fornite nei dati.
-    7. QUALITÀ DELL'ARIA E SABBIA: Se presente l'avviso per aria inquinata o depositi di sabbia sulle superfici esposte, riportalo testualmente in modo asciutto alla fine del rispettivo paragrafo.
+    2. CONTENUTO PARAGRAFI E NUMERO: INIZIA SEMPRE ogni paragrafo citando il giorno contestualizzato e la data (es. "Oggi, {oggi_str}, " oppure "Domani, {domani_str}, "). I paragrafi testuali devono essere ESATTAMENTE E SOLTANTO DUE.
+    3. DIVIETO ASSOLUTO DI FRASI RIEMPITIVE: NON aggiungere MAI frasi di chiusura, deduzioni o riempitivi come "non sono previsti altri fenomeni degni di nota", "nessun'altra segnalazione" o simili. Se i dati per una giornata finiscono, termina il paragrafo immediatamente con un punto.
+    4. STILE TEMPERATURE E DISAGIO CALDO: Subito dopo la data, per esprimere le temperature usa TASSATIVAMENTE questa struttura al singolare: "la temperatura minima sarà di X °C, mentre la massima raggiungerà i Y °C". Scrivi i valori termici SEMPRE staccando l'unità di misura (es. "20 °C"). DEVI INCLUDERE l'emoji del disagio termico copiandola dai dati (es. "con un disagio marcato 🟠"). Se c'è l'avviso "(possibili gelate)", copialo testualmente dopo la minima.
+    5. CIELO E NEBBIA: Non usare MAI l'avverbio "prevalentemente", usa sempre "in prevalenza". Se nei dati è indicata la nebbia, integrala in maniera fluida con la descrizione della nuvolosità.
+    6. STILE VENTO E DISAGIO FREDDO: Se nei dati leggi "La ventilazione sarà blanda" o "La ventilazione sarà da blanda a moderata", scrivi ESATTAMENTE questo. Se è forte, aggancia fluidamente l'emoji e il disagio da freddo al vento se indicato.
+    7. DIVIETO COMMENTI SOGGETTIVI: NON usare MAI espressioni romanzate come "condizioni ideali" o "giornata scomoda". Mantieni un tono tecnico e fattuale. NESSUN asterisco o markdown. Usa un linguaggio naturale per integrare le varie fasi di precipitazione fornite nei dati.
+    8. QUALITÀ DELL'ARIA E SABBIA: Se presente l'avviso per aria inquinata o depositi di sabbia sulle superfici esposte, riportalo testualmente in modo asciutto alla fine del rispettivo paragrafo.
     
     DATI DA TRASFORMARE:
     {dati_testuali}
