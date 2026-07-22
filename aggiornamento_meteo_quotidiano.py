@@ -266,7 +266,12 @@ def main():
                 'ha_sabbia': False
             }
 
-    indici_validi = [i for i, t in enumerate(orari) if (datetime.fromisoformat(t).date() - dt_oggi.date()).days in target_days]
+    ora_attuale = datetime.now().hour
+    indici_validi = [
+        i for i, t in enumerate(orari) 
+        if (datetime.fromisoformat(t).date() - dt_oggi.date()).days in target_days 
+        and not ((datetime.fromisoformat(t).date() - dt_oggi.date()).days == 0 and datetime.fromisoformat(t).hour < ora_attuale)
+    ]
 
     for i in indici_validi:
         ora_solare = datetime.fromisoformat(orari[i]).hour
