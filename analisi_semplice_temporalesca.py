@@ -3,6 +3,7 @@ import sys
 import math
 import requests
 from datetime import datetime
+from groq import Groq
 
 # Coordinate - Rivoli (TO)
 LAT = 45.0734521841099
