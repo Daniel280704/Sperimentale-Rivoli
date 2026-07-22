@@ -24,6 +24,13 @@ def calcola_vettore_traslazione(u, v):
     direction_deg = (math.degrees(math.atan2(u, v)) + 360) % 360
     return speed_kmh, direction_deg
 
+# ECCO LA FUNZIONE CHE MANCAVA!
+def magnitudo_shear(u1, v1, u2, v2):
+    """Calcola la magnitudo (m/s) della differenza vettoriale."""
+    if None in (u1, v1, u2, v2):
+        return None
+    return math.sqrt((u2 - u1)**2 + (v2 - v1)**2)
+
 def classificazione_traslazione_avverbio(kmh):
     if kmh < 15: return "molto lentamente, risultando quasi stazionario"
     if kmh < 30: return "lentamente"
@@ -219,7 +226,6 @@ def main():
         spessore = (max_top - min_base) if min_base and max_top else 0
         z_termico = media_sicura([hourly['freezing_level_height_dwd_icon_d2'][i] for i in indici_attivi])
 
-        # Estrazione PWAT da ECMWF
         if hourly_ecmwf:
             pwat = max_sicuro([hourly_ecmwf['total_column_integrated_water_vapour'][i] for i in indici_attivi if i < len(hourly_ecmwf['total_column_integrated_water_vapour'])])
         else:
@@ -233,13 +239,22 @@ def main():
         u_500, v_500 = [], []
 
         for i in indici_attivi:
-            u, v = scomposizione_vettoriale(hourly['wind_speed_1000hPa_dwd_icon_d2'][i], hourly['wind_direction_1000hPa_dwd_icon_d2'][i])
+            w_speed_10 = hourly['wind_speed_1000hPa_dwd_icon_d2'][i] if hourly['wind_speed_1000hPa_dwd_icon_d2'][i] else 0
+            w_dir_10 = hourly['wind_direction_1000hPa_dwd_icon_d2'][i] if hourly['wind_direction_1000hPa_dwd_icon_d2'][i] else 0
+            w_speed_850 = hourly['wind_speed_850hPa_dwd_icon_d2'][i] if hourly['wind_speed_850hPa_dwd_icon_d2'][i] else 0
+            w_dir_850 = hourly['wind_direction_850hPa_dwd_icon_d2'][i] if hourly['wind_direction_850hPa_dwd_icon_d2'][i] else 0
+            w_speed_700 = hourly['wind_speed_700hPa_dwd_icon_d2'][i] if hourly['wind_speed_700hPa_dwd_icon_d2'][i] else 0
+            w_dir_700 = hourly['wind_direction_700hPa_dwd_icon_d2'][i] if hourly['wind_direction_700hPa_dwd_icon_d2'][i] else 0
+            w_speed_500 = hourly['wind_speed_500hPa_dwd_icon_d2'][i] if hourly['wind_speed_500hPa_dwd_icon_d2'][i] else 0
+            w_dir_500 = hourly['wind_direction_500hPa_dwd_icon_d2'][i] if hourly['wind_direction_500hPa_dwd_icon_d2'][i] else 0
+
+            u, v = scomposizione_vettoriale(w_speed_10, w_dir_10)
             u_10.append(u); v_10.append(v)
-            u, v = scomposizione_vettoriale(hourly['wind_speed_850hPa_dwd_icon_d2'][i], hourly['wind_direction_850hPa_dwd_icon_d2'][i])
+            u, v = scomposizione_vettoriale(w_speed_850, w_dir_850)
             u_850.append(u); v_850.append(v)
-            u, v = scomposizione_vettoriale(hourly['wind_speed_700hPa_dwd_icon_d2'][i], hourly['wind_direction_700hPa_dwd_icon_d2'][i])
+            u, v = scomposizione_vettoriale(w_speed_700, w_dir_700)
             u_700.append(u); v_700.append(v)
-            u, v = scomposizione_vettoriale(hourly['wind_speed_500hPa_dwd_icon_d2'][i], hourly['wind_direction_500hPa_dwd_icon_d2'][i])
+            u, v = scomposizione_vettoriale(w_speed_500, w_dir_500)
             u_500.append(u); v_500.append(v)
 
         avg_u10, avg_v10 = sum(u_10)/len(u_10), sum(v_10)/len(v_10)
