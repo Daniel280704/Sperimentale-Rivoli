@@ -34,9 +34,8 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_THREAD_ID_CONVEZIONE: ${{ secrets.TELEGRAM_THREAD_ID_CONVEZIONE }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: python analisi_fenomenologia_temporalesca.py
+        run: python analisi_semplice_temporalesca.py
 
       - name: Salva il file semaforo temporali (Commit & Push)
         run: |
