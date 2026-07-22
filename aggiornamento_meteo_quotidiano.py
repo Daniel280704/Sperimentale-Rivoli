@@ -411,10 +411,19 @@ def main():
                 picco_val = arrotonda_intero(ev['picco_mm'])
                 picco_txt = f"circa {picco_val} mm/h" if picco_val > 0 else "inferiore a 1 mm/h"
                 
+                # Gestione semantica per eventi a cavallo della mezzanotte
+                str_inizio = "in prosecuzione dalla serata precedente" if ev['inizio'] == 0 else f"inizio {ottieni_fascia_oraria(ev['inizio'])} (ore {ev['inizio']})"
+                str_fine = "in prosecuzione oltre la mezzanotte" if ev['fine'] == 23 else f"fine {ottieni_fascia_oraria(ev['fine'])} (ore {ev['fine']})"
+                
                 if ev['inizio'] == ev['fine']:
-                    testo_per_ia += f"  * Fase di {nome_fenomeno} {i_prec}: fenomeni isolati {ottieni_fascia_oraria(ev['inizio'])} (ore {ev['inizio']}).\n"
+                    if ev['inizio'] == 0:
+                        testo_per_ia += f"  * Fase di {nome_fenomeno} {i_prec}: residui dalla serata precedente fino alle ore 0.\n"
+                    elif ev['inizio'] == 23:
+                        testo_per_ia += f"  * Fase di {nome_fenomeno} {i_prec}: in peggioramento dalle ore 23 e in prosecuzione oltre la mezzanotte.\n"
+                    else:
+                        testo_per_ia += f"  * Fase di {nome_fenomeno} {i_prec}: fenomeni isolati {ottieni_fascia_oraria(ev['inizio'])} (ore {ev['inizio']}).\n"
                 else:
-                    testo_per_ia += f"  * Fase di {nome_fenomeno} {i_prec}: inizio {ottieni_fascia_oraria(ev['inizio'])} (ore {ev['inizio']}), picco {ottieni_fascia_oraria(ev['ora_picco'])} (ore {ev['ora_picco']}) con intensità {picco_txt}, fine {ottieni_fascia_oraria(ev['fine'])} (ore {ev['fine']}).\n"
+                    testo_per_ia += f"  * Fase di {nome_fenomeno} {i_prec}: {str_inizio}, picco {ottieni_fascia_oraria(ev['ora_picco'])} (ore {ev['ora_picco']}) con intensità {picco_txt}, {str_fine}.\n"
             
             if dg['snow_sum'] > 0 and ('neve' in active_types or 'mista' in active_types):
                 sd_max = dg['max_snow_depth'] * 100
