@@ -34,7 +34,6 @@ def estrai_limiti_run(hourly_data: dict, ref_param: str, utc_offset_sec: int):
     if end_idx == -1: return False, "", None
 
     ultima_ora_valida_str = times[end_idx]
-
     dt_end_local = datetime.fromisoformat(ultima_ora_valida_str)
     dt_end_utc = dt_end_local - timedelta(seconds=utc_offset_sec)
     
@@ -61,7 +60,7 @@ def estrai_limiti_run(hourly_data: dict, ref_param: str, utc_offset_sec: int):
         with open(FILE_LAST_HOUR, "r") as f:
             ultima_ora_salvata = f.read().strip()
         if ultima_ora_valida_str <= ultima_ora_salvata:
-            print(f"✅ Run ICON-CH2 {nome_run} già elaborato per questo evento.")
+            print(f"✅ Run ICON-CH2 {nome_run} già elaborato per l'evento.")
             return False, "", None
 
     with open(FILE_LAST_HOUR, "w") as f:
@@ -80,7 +79,7 @@ def fetch_dati_openmeteo() -> dict:
         "past_days": 1,
         "forecast_days": 6 
     }
-    headers = {"User-Agent": "MeteoBot-ICONCH2-Semaforo/3.1"}
+    headers = {"User-Agent": "MeteoBot-ICONCH2-Evento/6.0"}
 
     for tentativo in range(3):
         try:
@@ -96,6 +95,11 @@ def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: 
     base_url = "https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-forecasting-icon-ch2/items"
     grib_urls = []
     
+    # Tripla rete per i metadati Svizzeri
+    str_run_iso_z = dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+    str_run_iso_off = dt_run_utc.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+    str_run_flat = dt_run_utc.strftime('%Y%m%d%H')
+    
     for target in [target_start, target_end]:
         target_str_z = target.strftime('%Y-%m-%dT%H:%M:%SZ')
         print(f"\n🔍 Ricerca STAC mirata per validità: {target_str_z}...")
@@ -110,73 +114,59 @@ def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: 
                 res.raise_for_status()
                 data = res.json()
                 
-                page_features = data.get("features", [])
-                features.extend(page_features)
+                features.extend(data.get("features", []))
                 
-                next_link = None
-                for link in data.get("links", []):
-                    if link.get("rel") == "next":
-                        next_link = link.get("href")
-                        break
-                        
+                next_link = next((link.get("href") for link in data.get("links", []) if link.get("rel") == "next"), None)
                 if next_link:
                     current_url = next_link
                     params = {} 
                 else:
                     current_url = None 
-                    
             except Exception as e:
                 print(f"⚠️ Errore API STAC durante la paginazione: {e}")
                 break
 
-        print(f" -> Trovati {len(features)} pacchetti totali per questa esatta ora.")
-        
-        str_run_iso = dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+        print(f" -> Trovati {len(features)} pacchetti totali per quest'ora.")
         
         trovato = False
         for feat in features:
             props = feat.get("properties", {})
             ref_time = props.get("forecast:reference_datetime", "")
+            feat_str = str(feat)
             
-            if str_run_iso in ref_time or str_run_iso in str(feat):
-                assets = feat.get("assets", {})
-                for key, asset in assets.items():
+            if str_run_iso_z in ref_time or str_run_iso_off in ref_time or str_run_flat in feat_str:
+                for key, asset in feat.get("assets", {}).items():
                     key_upper = key.upper()
                     href = asset.get("href", "")
                     
                     if href.upper().endswith(".GRIB2") and "CONSTANTS" not in key_upper:
-                        # Riconoscimento mirato sulla nuova stringa TOT_PR
                         if "TOT_PR" in key_upper or "TOT_PREC" in key_upper or "PRECIP" in key_upper or "TP" in key_upper:
                             grib_urls.append(href)
                             trovato = True
                             print(f" -> OK: Variabile Pioggia individuata [{key}]")
                             break
-                            
                 if not trovato:
-                    for key, asset in assets.items():
+                    for key, asset in feat.get("assets", {}).items():
                         href = asset.get("href", "")
-                        if href.upper().endswith(".GRIB2") and "CONSTANTS" not in key.upper():
+                        if href.upper().endswith(".GRIB2") and "CONSTANTS" not in key_upper:
                             grib_urls.append(href)
                             trovato = True
                             print(f" -> OK: Selezionato GRIB generico [{key}]")
                             break
-                            
             if trovato:
                 break
                 
         if not trovato:
             print(f" -> Nessun file associato al run del {dt_run_utc.strftime('%d/%m %H:00')} trovato per {target_str_z}.")
-            if target == dt_run_utc:
-                print(" -> Trattandosi dell'inizio del run (step +0h), possiamo ignorarlo: l'accumulo partirà da zero.")
 
-    if len(grib_urls) == 0:
-        print(f"\n❌ ERRORE: Nessun link GRIB valido trovato per l'evento.")
+    if len(grib_urls) < 2:
+        print(f"\n❌ ERRORE: Impossibile procedere. Servono 2 file, trovati {len(grib_urls)}.")
         return []
 
     grib_files = []
-    print(f"\n📥 Inizio download dei {len(grib_urls)} file GRIB2 da AWS...")
+    print(f"\n📥 Inizio download dei {len(grib_urls)} file GRIB2 necessari...")
     for i, file_url in enumerate(grib_urls):
-        local_filename = f"icon_ch2_precip_{i}.grib2"
+        local_filename = f"icon_ch2_precip_evento_{i}.grib2"
         try:
             r = requests.get(file_url, stream=True, timeout=60)
             r.raise_for_status()
@@ -204,7 +194,7 @@ def invia_telegram(file_path, caption):
         try:
             with open(file_path, "rb") as photo:
                 requests.post(url, data=payload, files={"photo": photo})
-                print("\n📸 Mappa prime 24h inviata con successo su Telegram!")
+                print("\n📸 Mappa dell'Evento inviata con successo su Telegram!")
         except Exception as e:
             print(f"Errore invio Telegram: {e}")
     else:
@@ -214,9 +204,8 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
     step_start = int((target_start - dt_run_utc).total_seconds() / 3600)
     step_end = int((target_end - dt_run_utc).total_seconds() / 3600)
     
-    print(f"\nCaricamento e decodifica di {len(grib_files)} file GRIB (Step run: +{step_start}h / +{step_end}h)...")
+    print(f"\nControllo ecCodes e decodifica GRIB (Step evento: +{step_start}h / +{step_end}h)...")
     
-    # --- CHECK DI SANITÀ GRIB CON ECCODES ---
     valid_gribs = []
     for f in grib_files:
         if not os.path.exists(f) or os.path.getsize(f) < 5000:
@@ -227,27 +216,21 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
             print(f"✅ File {f} letto e decodificato correttamente da ecCodes.")
             valid_gribs.append(f)
         except subprocess.CalledProcessError as e:
-            print(f"❌ ERRORE ecCodes: Il file {f} è corrotto o le definizioni GRIB mancano.")
-            print(f"Output errore: {e.stderr.decode('utf-8', errors='ignore')}")
+            print(f"❌ ERRORE ecCodes: Il file {f} è corrotto o mancano le definizioni.")
 
     if not valid_gribs:
-        print("❌ Nessun GRIB valido dopo il controllo ecCodes. Uscita.")
+        print("❌ Nessun GRIB valido dopo il controllo. Uscita.")
         return
 
-    # --- LETTURA SICURA IN METVIEW ---
     data = None
     for f in valid_gribs:
         try:
             temp_fs = mv.read(f)
-            if data is None:
-                data = temp_fs
-            else:
-                data = data + temp_fs
+            data = temp_fs if data is None else data + temp_fs
         except Exception as e:
             print(f"⚠️ Errore di Metview nella lettura del file {f}: {e}")
 
     if data is None or len(data) == 0:
-        print("❌ ERRORE CRITICO: Contenitore Metview vuoto. Uscita.")
         return
     
     coast = mv.mcoast(
@@ -302,23 +285,14 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
         legend_box_x_length=1.5, legend_box_y_length=14.0, legend_text_font_size=0.4
     )
 
+    tp_start = data.select(step=step_start)
     tp_end = data.select(step=step_end)
-    if len(tp_end) == 0:
-        print(f"Errore: GRIB incompleti in lettura per lo step finale ({step_end}).")
+    
+    if len(tp_start) == 0 or len(tp_end) == 0:
+        print(f"Errore: GRIB incompleti per gli step {step_start} o {step_end}.")
         return
         
-    tp_start = data.select(step=step_start)
-    
-    if len(tp_start) == 0:
-        if step_start == 0:
-            print(" -> Lo step 0 non contiene il campo precipitazione. Utilizzo direttamente l'accumulo al target finale.")
-            tp_diff = tp_end
-        else:
-            print(f"Errore: GRIB incompleti in lettura per lo step iniziale ({step_start}).")
-            return
-    else:
-        tp_diff = tp_end - tp_start
-        
+    tp_diff = tp_end - tp_start
     tp_mean = mv.mean(tp_diff)
 
     max_val = mv.maxvalue(tp_mean)
@@ -332,7 +306,7 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
 
     title = mv.mtext(
         text_lines=[
-            f"ICON-CH2-EPS - Prime 24h del Run: {str_run} UTC", 
+            f"ICON-CH2-EPS - Accumulo Precipitativo (Run: {str_run} UTC)", 
             str_valida
         ], 
         text_font_size=0.5, text_colour='black'
@@ -343,7 +317,7 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
     mv.plot(view, tp_mean_mm, tp_style, capoluoghi, stile_capoluoghi, rivoli_point, stile_rivoli, legend, title)
     
     file_generato = f"{PNG_OUTPUT}.1.png"
-    caption_foto = f"🌧 LE PRIME 24 ORE\n📅 {str_valida}\n⚙️ Media Ensemble MeteoSvizzera\n🕒 Run: {str_run} UTC"
+    caption_foto = f"🌧 FOCUS EVENTO 24H\n📅 Sab 12:00 - Dom 12:00 (UTC)\n⚙️ Media Ensemble MeteoSvizzera\n🕒 Run: {str_run} UTC"
     
     invia_telegram(file_generato, caption_foto)
 
@@ -366,12 +340,24 @@ def main():
     is_new, nome_run, dt_run_utc = estrai_limiti_run(hourly, "temperature_2m", utc_offset)
     
     if is_new:
-        target_start = dt_run_utc
-        target_end = dt_run_utc + timedelta(hours=24)
+        # Finestra fissa richiesta per l'evento
+        target_start = datetime(2026, 7, 25, 12, 0)
+        target_end = datetime(2026, 7, 26, 12, 0)
+        
+        step_end = int((target_end - dt_run_utc).total_seconds() / 3600)
+        step_start = int((target_start - dt_run_utc).total_seconds() / 3600)
+        
+        if step_end > 120:
+            print(f"L'evento esce dalla coda di previsione a 120h (+{step_end}h). Uscita.")
+            sys.exit(0)
+            
+        if step_start < 0:
+            print("L'inizio dell'evento è già passato rispetto al run attuale. Uscita.")
+            sys.exit(0)
         
         grib_files = scarica_grib_stac(dt_run_utc, target_start, target_end)
         if grib_files:
-            print(f"\n🚀 Avvio mapping in Metview per il RUN {nome_run}")
+            print(f"\n🚀 Avvio mapping in Metview per l'evento")
             genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_end)
     else:
         print("Uscita.")
