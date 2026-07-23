@@ -8,52 +8,145 @@ import warnings
 
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 
-# Endpoint ufficiale STAC MeteoSvizzera per ICON-CH2-EPS (Ensemble 2.1 km)
-STAC_URL = "https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-forecasting-icon-ch2/items?sortby=-datetime&limit=1"
+LATITUDE = 45.07347491421504
+LONGITUDE = 7.543461388723449
+
 FILE_LAST_HOUR = "ultima_ora_icon_ch2_evento.txt"
+PNG_OUTPUT = "icon_ch2_evento"
 
-def verifica_e_scarica_run():
-    try:
-        response = requests.get(STAC_URL, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-    except Exception as e:
-        print(f"⚠️ Errore connessione STAC MeteoSvizzera: {e}")
-        return False, None, None, []
+# Regole fisse per ICON-CH2
+RUN_DURATION = 120
+START_DELAY = 1
 
-    if not data.get("features"):
-        return False, None, None, []
-        
-    latest_item = data["features"][0]
-    run_datetime_str = latest_item["properties"]["datetime"]
-    dt_run_utc = datetime.strptime(run_datetime_str, "%Y-%m-%dT%H:%M:%SZ")
+def estrai_limiti_run(hourly_data: dict, ref_param: str, utc_offset_sec: int):
+    # Logica di convalida Run basata su Open-Meteo Ensemble 
+    times = hourly_data.get("time", [])
+    mean_vals = hourly_data.get(ref_param, [])
+
+    if not times or not mean_vals: return False, "", None
+
+    end_idx = -1
+    for i in range(len(mean_vals) - 1, -1, -1):
+        if mean_vals[i] is not None:
+            end_idx = i
+            break
+
+    if end_idx == -1: return False, "", None
+
+    ultima_ora_valida_str = times[end_idx]
+
+    dt_end_local = datetime.fromisoformat(ultima_ora_valida_str)
+    dt_end_utc = dt_end_local - timedelta(seconds=utc_offset_sec)
+    
+    # Calcolo a ritroso per ottenere il base_time del Run
+    dt_run_utc = dt_end_utc - timedelta(hours=RUN_DURATION)
+    dt_start_utc = dt_run_utc + timedelta(hours=START_DELAY)
+
     nome_run = dt_run_utc.strftime("%H") + "Z"
+
+    expected_points = RUN_DURATION - START_DELAY + 1
+    
+    dt_start_local = dt_start_utc + timedelta(seconds=utc_offset_sec)
+    start_time_str = dt_start_local.strftime("%Y-%m-%dT%H:%M")
+    
+    try:
+        start_idx = times.index(start_time_str)
+        actual_points = end_idx - start_idx + 1
+    except ValueError:
+        actual_points = 0
+
+    if actual_points < expected_points:
+        print(f"⏳ Run ICON-CH2 {nome_run} in caricamento... ({actual_points}/{expected_points} ore)")
+        return False, "", None
 
     if os.path.exists(FILE_LAST_HOUR):
         with open(FILE_LAST_HOUR, "r") as f:
             ultima_ora_salvata = f.read().strip()
-        if run_datetime_str <= ultima_ora_salvata:
-            print(f"✅ Run ICON-CH2-EPS {nome_run} già elaborato per questo evento.")
-            return False, None, None, []
+        if ultima_ora_valida_str <= ultima_ora_salvata:
+            print(f"✅ Run ICON-CH2 {nome_run} già elaborato per questo evento.")
+            return False, "", None
 
-    print(f"🚀 Nuovo run MeteoSvizzera trovato: {run_datetime_str}")
+    with open(FILE_LAST_HOUR, "w") as f:
+        f.write(ultima_ora_valida_str)
 
-    assets = latest_item.get("assets", {})
+    return True, nome_run, dt_run_utc
+
+def fetch_dati_openmeteo() -> dict:
+    URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
+    var_list = ["temperature_2m"]
+    params = {
+        "latitude": LATITUDE,
+        "longitude": LONGITUDE,
+        "hourly": ",".join(var_list),
+        "models": "meteoswiss_icon_ch2_ensemble_mean",
+        "timezone": "Europe/Rome",
+        "past_days": 1,
+        "forecast_days": 6 
+    }
+    headers = {"User-Agent": "MeteoBot-ICONCH2-Semaforo/3.0"}
+
+    for tentativo in range(3):
+        try:
+            response = requests.get(URL, params=params, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"⚠️ Errore API Open-Meteo: {e}", file=sys.stderr)
+            time.sleep(15)
+    return {}
+
+def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: datetime):
+    search_url = "https://data.geo.admin.ch/api/stac/v1/search"
+    
+    # Payload ufficiale MeteoSvizzera per interrogazione Run specifico e Variabile Pioggia
+    payload = {
+        "collections": ["ch.meteoschweiz.ogd-forecasting-icon-ch2"],
+        "forecast:reference_datetime": dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "forecast:variable": "TOT_PREC",
+        "limit": 5000
+    }
+    headers = {"Content-Type": "application/json"}
+    
+    print(f"Ricerca GRIB tramite STAC per il run {dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ')}...")
+    
+    try:
+        res = requests.post(search_url, json=payload, headers=headers, timeout=30)
+        res.raise_for_status()
+        data = res.json()
+    except Exception as e:
+        print(f"⚠️ Errore STAC Search: {e}")
+        return []
+
+    features = data.get("features", [])
+    if not features:
+        print("Nessun file trovato nel catalogo STAC per questo run e variabile.")
+        return []
+
     grib_urls = []
     
-    for key, asset in assets.items():
-        key_upper = key.upper()
-        if key_upper.endswith('.GRIB2') and "CONSTANTS" not in key_upper:
-            if "TOT_PREC" in key_upper or "PRECIP" in key_upper or "TP" in key_upper:
-                grib_urls.append(asset["href"])
-                
+    for feat in features:
+        props = feat.get("properties", {})
+        dt_valida_str = props.get("datetime")
+        
+        if dt_valida_str:
+            # Estrazione sicura della data formattata
+            clean_str = dt_valida_str.split(".")[0].replace("Z", "")
+            dt_valida = datetime.strptime(clean_str, "%Y-%m-%dT%H:%M:%S")
+            
+            # Selezioniamo in modo chirurgico solo l'orario d'inizio o di fine dell'evento
+            if dt_valida == target_start or dt_valida == target_end:
+                assets = feat.get("assets", {})
+                for key, asset in assets.items():
+                    href = asset.get("href")
+                    if href and href.upper().endswith(".GRIB2"):
+                        grib_urls.append(href)
+
     if not grib_urls:
-        for key, asset in assets.items():
-            if key.upper().endswith('.GRIB2') and "CONSTANTS" not in key.upper():
-                grib_urls.append(asset["href"])
+        print(f"File GRIB non trovati per le ore target ({target_start} e {target_end}).")
+        return []
 
     grib_files = []
-    print(f"Scaricamento di {len(grib_urls)} file GRIB2...")
+    print(f"Trovati {len(grib_urls)} pacchetti. Inizio download GRIB2 da MeteoSvizzera...")
     for i, url in enumerate(grib_urls):
         local_filename = f"icon_ch2_precip_{i}.grib2"
         try:
@@ -66,10 +159,7 @@ def verifica_e_scarica_run():
         except Exception as e:
             print(f"Errore download GRIB: {e}")
 
-    with open(FILE_LAST_HOUR, "w") as f:
-        f.write(run_datetime_str)
-
-    return True, nome_run, dt_run_utc, grib_files
+    return grib_files
 
 def invia_telegram(file_path, caption):
     token = os.getenv("TELEGRAM_TOKEN")
@@ -86,31 +176,19 @@ def invia_telegram(file_path, caption):
         try:
             with open(file_path, "rb") as photo:
                 requests.post(url, data=payload, files={"photo": photo})
-                print(f"📸 Mappa evento inviata!")
+                print("📸 Mappa evento inviata con successo su Telegram!")
         except Exception as e:
             print(f"Errore invio Telegram: {e}")
     else:
         print(f"File {file_path} non trovato.")
 
-def genera_mappe_metview(dt_run_utc, nome_run, grib_files):
-    # Definizione temporale statica per l'evento specifico (Orari UTC)
-    target_start = datetime(2026, 7, 25, 12, 0)
-    target_end = datetime(2026, 7, 26, 12, 0)
-    
-    # Calcolo dinamico degli step necessari rispetto all'orario del run
+def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_end):
     step_start = int((target_start - dt_run_utc).total_seconds() / 3600)
     step_end = int((target_end - dt_run_utc).total_seconds() / 3600)
     
-    # Check di sicurezza se la finestra è fuori portata
-    if step_end > 120:
-        print(f"Attenzione: Lo step {step_end}h supera il limite di previsione del modello ICON-CH2 (120h). Uscita.")
-        return
-    if step_start < 0:
-        print("Attenzione: L'inizio dell'evento è già passato rispetto al run attuale. Uscita.")
-        return
-        
     print(f"Elaborazione mappa evento: 25/07 12:00 - 26/07 12:00 (Step run: +{step_start}h / +{step_end}h)")
     
+    # Lettura aggregata dei GRIB scaricati in precedenza
     data = mv.read(grib_files)
     
     coast = mv.mcoast(
@@ -165,12 +243,12 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files):
         legend_box_x_length=1.5, legend_box_y_length=14.0, legend_text_font_size=0.4
     )
 
-    # Estrazione dei campi e calcolo
+    # Estrazione mirata per step temporale
     tp_start = data.select(step=step_start)
     tp_end = data.select(step=step_end)
     
     if len(tp_start) == 0 or len(tp_end) == 0:
-        print(f"Errore: GRIB incompleti per gli step {step_start} o {step_end}.")
+        print(f"Errore: GRIB incompleti in lettura per gli step {step_start} o {step_end}.")
         return
         
     tp_diff = tp_end - tp_start
@@ -182,7 +260,6 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files):
     else:
         tp_mean_mm = tp_mean
 
-    PNG_OUTPUT = "icon_ch2_evento"
     str_run = dt_run_utc.strftime('%d/%m/%Y %H:%M')
     str_valida = "25/07/2026 12:00 - 26/07/2026 12:00 UTC"
 
@@ -199,11 +276,11 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files):
     mv.plot(view, tp_mean_mm, tp_style, capoluoghi, stile_capoluoghi, rivoli_point, stile_rivoli, legend, title)
     
     file_generato = f"{PNG_OUTPUT}.1.png"
-    caption_foto = f"🌧 FOCUS EVENTO (24h)\n📅 {str_valida}\n⚙️ Media Ensemble MeteoSvizzera\n🕒 Run: {str_run} UTC"
+    caption_foto = f"🌧 EVENTO (24h)\n📅 {str_valida}\n⚙️ Media Ensemble MeteoSvizzera\n🕒 Run: {str_run} UTC"
     
     invia_telegram(file_generato, caption_foto)
 
-    # Pulizia
+    # Eliminazione totale file temporanei
     if os.path.exists(file_generato):
         os.remove(file_generato)
     for f in grib_files:
@@ -211,12 +288,31 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files):
             os.remove(f)
 
 def main():
-    print("Verifica stato Run ICON-CH2 per l'evento selezionato...")
-    is_new, nome_run, dt_run_utc, grib_files = verifica_e_scarica_run()
+    print("Verifica stato Run ICON-CH2 via Open-Meteo...")
+    openmeteo_data = fetch_dati_openmeteo()
     
-    if is_new and grib_files:
-        print(f"🚀 Generazione mappa per il RUN {nome_run} ({dt_run_utc})")
-        genera_mappe_metview(dt_run_utc, nome_run, grib_files)
+    if not openmeteo_data:
+        sys.exit(0)
+        
+    hourly = openmeteo_data.get("hourly", {})
+    utc_offset = openmeteo_data.get("utc_offset_seconds", 0)
+    
+    is_new, nome_run, dt_run_utc = estrai_limiti_run(hourly, "temperature_2m", utc_offset)
+    
+    if is_new:
+        target_start = datetime(2026, 7, 25, 12, 0)
+        target_end = datetime(2026, 7, 26, 12, 0)
+        
+        # Blocco di sicurezza temporale
+        step_end = int((target_end - dt_run_utc).total_seconds() / 3600)
+        if step_end > 120:
+            print(f"L'evento esce dalla coda di previsione a 120h (+{step_end}h). Uscita.")
+            sys.exit(0)
+        
+        grib_files = scarica_grib_stac(dt_run_utc, target_start, target_end)
+        if grib_files:
+            print(f"🚀 Generazione mappa per il RUN {nome_run} ({dt_run_utc})")
+            genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_end)
     else:
         print("Uscita.")
 
