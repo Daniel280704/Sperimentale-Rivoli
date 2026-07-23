@@ -1,0 +1,55 @@
+name: ECMWF HRES Auto-Pluvio 10gg
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-ecmwf-piemonte-pioggia-hres:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnetcdf-dev libnetcdff-dev libgl1
+
+      - name: Install Conda and Metview
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+          python-version: '3.10'
+          channels: conda-forge,defaults
+          channel-priority: strict
+          activate-environment: ecmwf-env
+
+      - name: Install Python Packages
+        shell: bash -el {0}
+        run: |
+          conda install -c conda-forge metview metview-python ecmwf-opendata requests
+
+      - name: Esecuzione Script Pluviometrico HRES
+        shell: bash -el {0}
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python ecmwf_hres_10giorni.py
+
+      - name: Commit e Push Tracking Run
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add ultima_ora_ecmwf_hres.txt
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Aggiornamento tracker RUN ECMWF HRES" && git push)
