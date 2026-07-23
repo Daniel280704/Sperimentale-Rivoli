@@ -40,11 +40,11 @@ def download_and_plot():
 
     data = mv.read(FILENAME)
     
-    # 1. Estrazione e CONVERSIONE IN CELSIUS (fondamentale)
+    # 1. Estrazione e CONVERSIONE IN CELSIUS
     t925_kelvin = data.select(shortName='t', level=925)
     t925_celsius = t925_kelvin - 273.15 
     
-    # 2. Impostazione della mappa (Confini marcati, incluse le regioni)
+    # 2. Impostazione della mappa (Corretti i parametri land/sea shade)
     coast = mv.mcoast(
         map_coastline_colour="black",
         map_coastline_thickness=2,
@@ -52,41 +52,42 @@ def download_and_plot():
         map_boundaries="on",
         map_boundaries_colour="black",
         map_boundaries_thickness=2,
-        map_administrative_boundaries="on", # Attiva i confini regionali (es. Piemonte, Lombardia)
+        map_administrative_boundaries="on", 
         map_administrative_boundaries_colour="RGB(0.2, 0.2, 0.2)",
         map_administrative_boundaries_thickness=1,
-        map_land_sea_shade="off",
-        map_grid="off", # Spento per mantenere la mappa pulita come nell'immagine
+        map_coastline_land_shade="off",  # <-- CORRETTO
+        map_coastline_sea_shade="off",   # <-- CORRETTO
+        map_grid="off",
         map_label="off"
     )
     
     view = mv.geoview(
         map_area_definition="corners",
-        area=[43.5, 6.0, 46.8, 10.5], # Taglio simile all'immagine allegata
+        area=[43.5, 6.0, 46.8, 10.5], 
         coastlines=coast
     )
 
-    # 3. Stile Temperatura (Replicazione stile immagine)
+    # 3. Stile Temperatura
     t925_style = mv.mcont(
         legend="on",
         contour="on",
-        contour_line_colour="RGB(0.5, 0.5, 0.5)", # Linee di separazione grigie sottili
+        contour_line_colour="RGB(0.5, 0.5, 0.5)", 
         contour_line_thickness=1,
-        contour_highlight="off", # Niente linee in grassetto
-        contour_label="on",      # Stampa i numeri sulla mappa
+        contour_highlight="off", 
+        contour_label="on",      
         contour_label_height=0.4,
         contour_label_frequency=1,
         contour_label_colour="black",
         contour_shade="on",
         contour_shade_technique="polygon_shading",
         contour_level_selection_type="interval",
-        contour_interval=1.0,    # 1 Grado di intervallo
+        contour_interval=1.0,    
         contour_shade_colour_method="calculate",
         contour_shade_min_level=-10.0,
         contour_shade_max_level=35.0,
         contour_shade_min_level_colour="purple",
         contour_shade_max_level_colour="red",
-        contour_shade_colour_direction="clockwise" # Crea l'arcobaleno termico
+        contour_shade_colour_direction="clockwise" 
     )
     
     # Configurazione Legenda in basso
@@ -117,7 +118,6 @@ def download_and_plot():
     
     mv.setoutput(png)
     
-    # Plotting: View -> Dati in Celsius -> Stile -> Legenda -> Titolo
     mv.plot(view, t925_celsius, t925_style, legend, title)
     return True
 
