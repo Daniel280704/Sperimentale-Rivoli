@@ -79,7 +79,7 @@ def fetch_dati_openmeteo() -> dict:
         "past_days": 1,
         "forecast_days": 6 
     }
-    headers = {"User-Agent": "MeteoBot-ICONCH2-Evento/6.0"}
+    headers = {"User-Agent": "MeteoBot-ICONCH2-Evento/7.0"}
 
     for tentativo in range(3):
         try:
@@ -95,10 +95,7 @@ def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: 
     base_url = "https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-forecasting-icon-ch2/items"
     grib_urls = []
     
-    # Tripla rete per i metadati Svizzeri
     str_run_iso_z = dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
-    str_run_iso_off = dt_run_utc.strftime('%Y-%m-%dT%H:%M:%S+00:00')
-    str_run_flat = dt_run_utc.strftime('%Y%m%d%H')
     
     for target in [target_start, target_end]:
         target_str_z = target.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -126,38 +123,43 @@ def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: 
                 print(f"⚠️ Errore API STAC durante la paginazione: {e}")
                 break
 
-        print(f" -> Trovati {len(features)} pacchetti totali per quest'ora.")
+        print(f" -> Trovati {len(features)} pacchetti (Ogni pacchetto = 1 Variabile meteo).")
         
         trovato = False
         for feat in features:
             props = feat.get("properties", {})
             ref_time = props.get("forecast:reference_datetime", "")
-            feat_str = str(feat)
+            var_name = props.get("forecast:variable", "")
             
-            if str_run_iso_z in ref_time or str_run_iso_off in ref_time or str_run_flat in feat_str:
-                for key, asset in feat.get("assets", {}).items():
-                    key_upper = key.upper()
-                    href = asset.get("href", "")
+            # Filtro 1: Deve appartenere al Run corretto
+            if str_run_iso_z not in ref_time and str_run_iso_z.replace("Z", "+00:00") not in ref_time:
+                continue
+            
+            # Filtro 2: Identifichiamo se il pacchetto è la precipitazione (TOT_PREC nel metadato STAC)
+            is_precip = False
+            if var_name.upper() in ["TOT_PREC", "TOT_PR", "RAIN_GSP"]:
+                is_precip = True
+                
+            for key, asset in feat.get("assets", {}).items():
+                href = asset.get("href", "")
+                
+                # Controllo di riserva se il nome della variabile manca nel metadato ma c'è nel link
+                if not is_precip and ("tot_pr" in href.lower() or "tot_prec" in href.lower()):
+                    is_precip = True
                     
-                    if href.upper().endswith(".GRIB2") and "CONSTANTS" not in key_upper:
-                        if "TOT_PR" in key_upper or "TOT_PREC" in key_upper or "PRECIP" in key_upper or "TP" in key_upper:
-                            grib_urls.append(href)
-                            trovato = True
-                            print(f" -> OK: Variabile Pioggia individuata [{key}]")
-                            break
-                if not trovato:
-                    for key, asset in feat.get("assets", {}).items():
-                        href = asset.get("href", "")
-                        if href.upper().endswith(".GRIB2") and "CONSTANTS" not in key_upper:
-                            grib_urls.append(href)
-                            trovato = True
-                            print(f" -> OK: Selezionato GRIB generico [{key}]")
-                            break
+                # Filtro 3: Vogliamo il file GRIB e, come da tuo schema, il ramo Perturbato (-perturb) per l'Ensemble
+                if is_precip and href.upper().endswith(".GRIB2") and "-perturb" in href.lower():
+                    grib_urls.append(href)
+                    trovato = True
+                    nome_file = href.split('/')[-1].split('?')[0] # Pulisce il link dai token AWS per il print
+                    print(f" -> OK: Selezionato file Precipitazione EPS [{nome_file}]")
+                    break
+                    
             if trovato:
                 break
                 
         if not trovato:
-            print(f" -> Nessun file associato al run del {dt_run_utc.strftime('%d/%m %H:00')} trovato per {target_str_z}.")
+            print(f" -> Nessun file PRECIPITAZIONE associato al run {dt_run_utc.strftime('%H:00')} trovato per {target_str_z}.")
 
     if len(grib_urls) < 2:
         print(f"\n❌ ERRORE: Impossibile procedere. Servono 2 file, trovati {len(grib_urls)}.")
@@ -289,9 +291,10 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
     tp_end = data.select(step=step_end)
     
     if len(tp_start) == 0 or len(tp_end) == 0:
-        print(f"Errore: GRIB incompleti per gli step {step_start} o {step_end}.")
+        print(f"Errore: GRIB incompleti in lettura per gli step {step_start} o {step_end}.")
         return
         
+    # Calcolo differenza matematica per ottenere l'accumulo delle 24h esatte
     tp_diff = tp_end - tp_start
     tp_mean = mv.mean(tp_diff)
 
@@ -317,7 +320,7 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
     mv.plot(view, tp_mean_mm, tp_style, capoluoghi, stile_capoluoghi, rivoli_point, stile_rivoli, legend, title)
     
     file_generato = f"{PNG_OUTPUT}.1.png"
-    caption_foto = f"🌧 FOCUS EVENTO 24H\n📅 Sab 12:00 - Dom 12:00 (UTC)\n⚙️ Media Ensemble MeteoSvizzera\n🕒 Run: {str_run} UTC"
+    caption_foto = f"🌧 FOCUS EVENTO 24H\n📅 Sabato 12:00 - Domenica 12:00 (UTC)\n⚙️ Media Ensemble MeteoSvizzera\n🕒 Run: {str_run} UTC"
     
     invia_telegram(file_generato, caption_foto)
 
