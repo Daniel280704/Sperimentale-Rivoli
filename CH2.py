@@ -96,61 +96,69 @@ def fetch_dati_openmeteo() -> dict:
     return {}
 
 def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: datetime):
-    search_url = "https://data.geo.admin.ch/api/stac/v1/search"
+    # Interroghiamo l'endpoint "items" chiedendo gli ultimi 800 elementi 
+    # (più che sufficienti a coprire gli ultimi 6-7 run di ICON)
+    url = "https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-forecasting-icon-ch2/items?sortby=-datetime&limit=800"
     
-    # Payload ufficiale MeteoSvizzera per interrogazione Run specifico e Variabile Pioggia
-    payload = {
-        "collections": ["ch.meteoschweiz.ogd-forecasting-icon-ch2"],
-        "forecast:reference_datetime": dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ'),
-        "forecast:variable": "TOT_PREC",
-        "limit": 5000
-    }
-    headers = {"Content-Type": "application/json"}
-    
-    print(f"Ricerca GRIB tramite STAC per il run {dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ')}...")
+    print(f"Ricerca GRIB nel catalogo STAC per il run {dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ')}...")
     
     try:
-        res = requests.post(search_url, json=payload, headers=headers, timeout=30)
+        res = requests.get(url, timeout=30)
         res.raise_for_status()
         data = res.json()
     except Exception as e:
-        print(f"⚠️ Errore STAC Search: {e}")
+        print(f"⚠️ Errore STAC: {e}")
         return []
 
     features = data.get("features", [])
-    if not features:
-        print("Nessun file trovato nel catalogo STAC per questo run e variabile.")
-        return []
-
     grib_urls = []
+    str_run_target = dt_run_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
     
     for feat in features:
         props = feat.get("properties", {})
-        dt_valida_str = props.get("datetime")
         
+        # Filtro 1: Controlliamo che l'elemento appartenga esattamente al Run calcolato dal semaforo
+        ref_time = props.get("forecast:reference_datetime", "")
+        if str_run_target not in ref_time:
+            continue
+            
+        dt_valida_str = props.get("datetime")
         if dt_valida_str:
-            # Estrazione sicura della data formattata
             clean_str = dt_valida_str.split(".")[0].replace("Z", "")
             dt_valida = datetime.strptime(clean_str, "%Y-%m-%dT%H:%M:%S")
             
-            # Selezioniamo in modo chirurgico solo l'orario d'inizio o di fine dell'evento
+            # Filtro 2: Selezioniamo solo le nostre 2 coordinate temporali
             if dt_valida == target_start or dt_valida == target_end:
                 assets = feat.get("assets", {})
+                trovato_precip = False
+                
+                # Srotoliamo i link AWS e cerchiamo la precipitazione
                 for key, asset in assets.items():
-                    href = asset.get("href")
-                    if href and href.upper().endswith(".GRIB2"):
-                        grib_urls.append(href)
+                    key_upper = key.upper()
+                    if key_upper.endswith(".GRIB2") and "CONSTANTS" not in key_upper:
+                        if "TOT_PREC" in key_upper or "PRECIP" in key_upper or "TP" in key_upper:
+                            grib_urls.append(asset["href"])
+                            trovato_precip = True
+                            print(f"Trovato layer [{key}] per lo step: {dt_valida}")
+                            
+                # Se non c'è una divisione esplicita, scarichiamo il grib2 principale di quell'ora
+                if not trovato_precip:
+                    for key, asset in assets.items():
+                        if key.upper().endswith(".GRIB2") and "CONSTANTS" not in key.upper():
+                            grib_urls.append(asset["href"])
+                            print(f"Fallback (GRIB generico) per lo step: {dt_valida}")
 
     if not grib_urls:
         print(f"File GRIB non trovati per le ore target ({target_start} e {target_end}).")
         return []
 
     grib_files = []
-    print(f"Trovati {len(grib_urls)} pacchetti. Inizio download GRIB2 da MeteoSvizzera...")
-    for i, url in enumerate(grib_urls):
+    print(f"Trovati {len(grib_urls)} link di download. Scaricamento in corso...")
+    
+    for i, file_url in enumerate(grib_urls):
         local_filename = f"icon_ch2_precip_{i}.grib2"
         try:
-            r = requests.get(url, stream=True, timeout=60)
+            r = requests.get(file_url, stream=True, timeout=60)
             r.raise_for_status()
             with open(local_filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
@@ -276,7 +284,7 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
     mv.plot(view, tp_mean_mm, tp_style, capoluoghi, stile_capoluoghi, rivoli_point, stile_rivoli, legend, title)
     
     file_generato = f"{PNG_OUTPUT}.1.png"
-    caption_foto = f"🌧 EVENTO (24h)\n📅 {str_valida}\n⚙️ Media Ensemble MeteoSvizzera\n🕒 Run: {str_run} UTC"
+    caption_foto = f"🌧 FOCUS EVENTO (24h)\n📅 {str_valida}\n⚙️ Media Ensemble MeteoSvizzera\n🕒 Run: {str_run} UTC"
     
     invia_telegram(file_generato, caption_foto)
 
