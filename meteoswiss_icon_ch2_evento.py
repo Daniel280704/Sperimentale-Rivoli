@@ -111,13 +111,11 @@ def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: 
             ref_time = props.get("forecast:reference_datetime", "")
             feat_str = str(feat)
             
-            # Controllo ultra-flessibile per accertarci che sia il Run corretto
             if str_run_iso_z in ref_time or ref_time.startswith(str_run_iso_z[:-1]) or str_run_flat in feat_str:
                 for key, asset in feat.get("assets", {}).items():
                     key_upper = key.upper()
                     href = asset.get("href", "")
                     
-                    # FIX: Usiamo 'in' invece di 'endswith' per non farci ingannare dai token AWS (?AWSAccessKey...)
                     if ".GRIB2" in href.upper() and "CONSTANTS" not in key_upper:
                         if "TOT_PR" in key_upper or "TOT_PREC" in key_upper or "PRECIP" in key_upper or "tot_pr" in href.lower():
                             if "-perturb" in href.lower():
@@ -127,7 +125,6 @@ def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: 
                                 break
                             
                 if not trovato:
-                    # Rete a strascico generale in caso di metadati scarni
                     for key, asset in feat.get("assets", {}).items():
                         href = asset.get("href", "")
                         if ".GRIB2" in href.upper() and "-perturb" in href.lower() and ("pr" in href.lower() or "prec" in href.lower()):
@@ -146,15 +143,25 @@ def scarica_grib_stac(dt_run_utc: datetime, target_start: datetime, target_end: 
         return []
 
     grib_files = []
-    print(f"\n📥 I 2 paletti orari sono disponibili. Inizio download da AWS...")
+    print(f"\n📥 Inizio download da AWS...")
     for i, file_url in enumerate(grib_urls):
         local_filename = f"icon_ch2_precip_{i}.grib2"
         try:
+            # Rimuoviamo eventuali re-encoding forzati dal link
             r = requests.get(file_url, stream=True, timeout=60)
             r.raise_for_status()
             with open(local_filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
+                    
+            # 🛡️ CONTROLLO ANTI-FREGATURA AWS
+            with open(local_filename, 'rb') as f:
+                header = f.read(4)
+                if header != b'GRIB':
+                    print(f"❌ ERRORE: AWS ha negato l'accesso (File non è un GRIB, trovato {header}). Il token STAC potrebbe essere fallato.")
+                    os.remove(local_filename)
+                    continue # Salta questo file per non far esplodere Metview
+                    
             grib_files.append(local_filename)
         except Exception as e:
             print(f"Errore download GRIB: {e}")
@@ -190,20 +197,21 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
     
     print(f"\nControllo ecCodes e decodifica GRIB (Step: +{step_start}h / +{step_end}h)...")
     
+    if len(grib_files) < 2:
+        print("❌ Download incompleto o fallito a causa dei token AWS. Uscita sicura.")
+        return False
+
     valid_gribs = []
     for f in grib_files:
-        if not os.path.exists(f) or os.path.getsize(f) < 5000:
-            print(f"⚠️ File saltato (troppo piccolo o inesistente).")
-            continue
         try:
             subprocess.run(['grib_ls', f], check=True, capture_output=True)
-            print(f"✅ File {f} decodificato correttamente.")
+            print(f"✅ File {f} decodificato e verificato.")
             valid_gribs.append(f)
         except subprocess.CalledProcessError:
-            print(f"❌ ERRORE ecCodes: Il file {f} è corrotto o mancano le definizioni.")
+            print(f"❌ ERRORE ecCodes: Il file {f} è corrotto. Impossibile processarlo.")
 
     if len(valid_gribs) < 2:
-        print("❌ GRIB incompleti dopo il controllo. Uscita.")
+        print("❌ GRIB incompleti. Uscita per evitare Segmentation Fault.")
         return False
 
     data = None
@@ -212,7 +220,7 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
             temp_fs = mv.read(f)
             data = temp_fs if data is None else data + temp_fs
         except Exception as e:
-            print(f"⚠️ Errore di Metview: {e}")
+            print(f"⚠️ Errore interno di Metview: {e}")
             return False
 
     if data is None or len(data) == 0:
@@ -273,8 +281,12 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
     tp_start = data.select(step=step_start)
     tp_end = data.select(step=step_end)
     
+    # Doppio controllo su quanti membri Ensemble abbiamo letto (devono corrispondere!)
+    print(f" -> Trovati {len(tp_start)} membri per lo step {step_start}h.")
+    print(f" -> Trovati {len(tp_end)} membri per lo step {step_end}h.")
+    
     if len(tp_start) == 0 or len(tp_end) == 0:
-        print(f"Errore: GRIB incompleti in lettura in Metview.")
+        print(f"❌ Errore: GRIB incompleti in lettura in Metview.")
         return False
         
     tp_diff = tp_end - tp_start
@@ -313,7 +325,6 @@ def genera_mappe_metview(dt_run_utc, nome_run, grib_files, target_start, target_
             os.remove(f)
             
     return esito
-
 def main():
     print("Verifica stato Run ICON-CH2 via Open-Meteo...")
     openmeteo_data = fetch_dati_openmeteo()
