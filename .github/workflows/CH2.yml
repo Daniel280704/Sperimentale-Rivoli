@@ -1,4 +1,4 @@
-name: MeteoSvizzera ICON-CH2 Auto-Pluvio 6h (5gg)
+name: MeteoSvizzera ICON-CH2 Evento 24h
 
 on:
   schedule:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  run-meteoswiss-icon-ch2:
+  run-meteoswiss-icon-ch2-evento:
     runs-on: ubuntu-latest
     
     steps:
@@ -38,9 +38,9 @@ jobs:
       - name: Install Python Packages
         shell: bash -el {0}
         run: |
-          conda install -c conda-forge metview metview-python requests
+          conda install -c conda-forge metview metview-python requests pandas numpy
 
-      - name: Esecuzione Script Pluviometrico ICON-CH2-EPS
+      - name: Esecuzione Script Pluviometrico Evento
         shell: bash -el {0}
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -51,5 +51,5 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add ultima_ora_icon_ch2.txt
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Aggiornamento tracker RUN ICON-CH2-EPS" && git push)
+          git add ultima_ora_icon_ch2_evento.txt
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Aggiornamento tracker RUN Evento ICON-CH2" && git push)
