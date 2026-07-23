@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import json
 import requests
 import metview as mv
 from ecmwf.opendata import Client
@@ -100,34 +101,62 @@ def fetch_dati_con_retry() -> dict:
             time.sleep(15)
     return {}
 
-def invia_telegram(file_path, caption):
+def invia_album_telegram(file_paths, caption_testo):
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     
     if not token or not chat_id:
         print("Credenziali Telegram mancanti.")
         return
-        
-    url = f"https://api.telegram.org/bot{token}/sendPhoto"
-    payload = {"chat_id": chat_id, "caption": caption}
+
+    url = f"https://api.telegram.org/bot{token}/sendMediaGroup"
     
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, "rb") as photo:
-                requests.post(url, data=payload, files={"photo": photo})
-                print(f"📸 Mappa inviata: {caption}")
-        except Exception as e:
-            print(f"Errore invio Telegram: {e}")
-    else:
-        print(f"File {file_path} non trovato.")
+    media = []
+    files = {}
+    opened_files = []
+    
+    # Prepara il payload in formato multipart per Telegram
+    for i, path in enumerate(file_paths):
+        if os.path.exists(path):
+            f = open(path, "rb")
+            opened_files.append(f)
+            file_id = f"photo{i}"
+            files[file_id] = f
+            
+            media_item = {
+                "type": "photo", 
+                "media": f"attach://{file_id}"
+            }
+            # Mettiamo la caption solo sulla prima immagine dell'album
+            if i == 0:
+                media_item["caption"] = caption_testo
+            
+            media.append(media_item)
+            
+    if not media:
+        print("Nessuna mappa da inviare nell'album.")
+        return
+
+    payload = {"chat_id": chat_id, "media": json.dumps(media)}
+    
+    try:
+        response = requests.post(url, data=payload, files=files)
+        if response.status_code == 200:
+            print("📸 Album inviato con successo su Telegram!")
+        else:
+            print(f"Errore invio album: {response.text}")
+    except Exception as e:
+        print(f"Errore di connessione Telegram: {e}")
+    finally:
+        # Chiudiamo tutti i file aperti al termine
+        for f in opened_files:
+            f.close()
 
 def genera_mappe_metview(dt_run_utc, nome_run):
     client = Client("ecmwf", beta=False)
     
-    # Calcoliamo l'indomani a mezzanotte (00:00 UTC)
     indomani_00z = (dt_run_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     
-    # Coste e Confini Regionali (tolti gli shapefile provinciali)
     coast = mv.mcoast(
         map_coastline_colour="brown",
         map_coastline_thickness=2,
@@ -137,14 +166,13 @@ def genera_mappe_metview(dt_run_utc, nome_run):
         map_boundaries_thickness=2,
         map_administrative_boundaries="on", 
         map_administrative_boundaries_colour="brown",
-        map_administrative_boundaries_thickness=1, # Spessore regionale rimesso fine
+        map_administrative_boundaries_thickness=1, 
         map_coastline_land_shade="off", 
         map_coastline_sea_shade="off",
         map_grid="off",
         map_label="off"
     )
     
-    # IMPAGINAZIONE
     view = mv.geoview(
         map_area_definition="corners",
         area=[43.5, 6.0, 46.8, 10.5], 
@@ -155,7 +183,6 @@ def genera_mappe_metview(dt_run_utc, nome_run):
         subpage_y_length=80     
     )
 
-    # CAPOLUOGHI DI PROVINCIA (Sigle testuali)
     lats = [45.07, 44.38, 44.90, 44.91, 45.32, 45.45, 45.56, 45.92]
     lons = [7.68,  7.55,  8.20,  8.61,  8.42,  8.61,  8.05,  8.55]
     sigle = ["TO", "CN", "AT", "AL", "VC", "NO", "BI", "VB"]
@@ -171,14 +198,9 @@ def genera_mappe_metview(dt_run_utc, nome_run):
         symbol_text_font_colour="brown", symbol_text_font_size=0.5, symbol_text_font_style="bold"
     )
 
-    # RIVOLI
-    lat_rivoli = [45.07]
-    lon_rivoli = [7.51]
-
     rivoli_point = mv.input_visualiser(
         input_plot_type="geo_points",
-        input_longitude_values=lon_rivoli,
-        input_latitude_values=lat_rivoli
+        input_longitude_values=[7.51], input_latitude_values=[45.07]
     )
 
     stile_rivoli = mv.msymb(
@@ -186,7 +208,6 @@ def genera_mappe_metview(dt_run_utc, nome_run):
         symbol_height=0.4, symbol_marker_index=15     
     )
 
-    # STILE PIOGGIA DETTAGLIATO (Da 1 mm in su)
     tp_style = mv.mcont(
         legend="on",                  
         contour="off",                
@@ -194,24 +215,24 @@ def genera_mappe_metview(dt_run_utc, nome_run):
         contour_shade_technique="polygon_shading",
         contour_shade_method="area_fill",
         contour_level_selection_type="level_list",
-        contour_level_list=[1, 2, 5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300], # 16 valori = 15 colori
+        contour_level_list=[1, 2, 5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300],
         contour_shade_colour_method="list",
         contour_shade_colour_list=[
-            "RGB(0.6, 0.8, 1.0)",  # 1-2
-            "RGB(0.0, 0.3, 1.0)",  # 2-5
-            "RGB(0.4, 0.9, 0.4)",  # 5-10
-            "RGB(0.0, 0.6, 0.0)",  # 10-15
-            "RGB(0.6, 0.8, 0.0)",  # 15-20 (Verde/Giallo)
-            "RGB(1.0, 0.9, 0.0)",  # 20-25 (Giallo)
-            "RGB(0.9, 0.7, 0.0)",  # 25-30
-            "RGB(1.0, 0.6, 0.0)",  # 30-40 (Arancio chiaro)
-            "RGB(1.0, 0.4, 0.0)",  # 40-50 (Arancio scuro)
-            "RGB(1.0, 0.2, 0.0)",  # 50-60 (Rosso/Arancio)
-            "RGB(1.0, 0.2, 0.2)",  # 60-80 (Rosso chiaro)
-            "RGB(0.7, 0.0, 0.0)",  # 80-100 (Rosso scuro)
-            "RGB(0.8, 0.2, 1.0)",  # 100-150
-            "RGB(0.5, 0.0, 0.8)",  # 150-200
-            "RGB(0.3, 0.0, 0.5)"   # > 200
+            "RGB(0.6, 0.8, 1.0)",  
+            "RGB(0.0, 0.3, 1.0)",  
+            "RGB(0.4, 0.9, 0.4)",  
+            "RGB(0.0, 0.6, 0.0)",  
+            "RGB(0.6, 0.8, 0.0)",  
+            "RGB(1.0, 0.9, 0.0)",  
+            "RGB(0.9, 0.7, 0.0)",  
+            "RGB(1.0, 0.6, 0.0)",  
+            "RGB(1.0, 0.4, 0.0)",  
+            "RGB(1.0, 0.2, 0.0)",  
+            "RGB(1.0, 0.2, 0.2)",  
+            "RGB(0.7, 0.0, 0.0)",  
+            "RGB(0.8, 0.2, 1.0)",  
+            "RGB(0.5, 0.0, 0.8)",  
+            "RGB(0.3, 0.0, 0.5)"   
         ]
     )
     
@@ -221,7 +242,9 @@ def genera_mappe_metview(dt_run_utc, nome_run):
         legend_box_x_length=1.5, legend_box_y_length=14.0, legend_text_font_size=0.4
     )
 
-    # Ciclo di generazione per 10 giorni
+    file_generati = []
+    
+    # Generazione in serie delle 10 mappe
     for i in range(10):
         target_start = indomani_00z + timedelta(days=i)
         target_end = target_start + timedelta(days=1)
@@ -271,20 +294,21 @@ def genera_mappe_metview(dt_run_utc, nome_run):
         mv.setoutput(png)
         mv.plot(view, tp_mean_mm, tp_style, capoluoghi, stile_capoluoghi, rivoli_point, stile_rivoli, legend, title)
         
-        # Invio su Telegram
         file_generato = f"{PNG_OUTPUT}.1.png"
-        caption = f"🌧 Precipitazioni 24h: {str_valida}\n⚙️ Run ENS: {str_run} UTC"
-        invia_telegram(file_generato, caption)
+        file_generati.append(file_generato)
         
-        # Pulizia file temporanei
+        # Elimina solo il GRIB temporaneo durante il ciclo
         os.remove(GRIB_FILE)
-        if os.path.exists(file_generato):
-            os.remove(file_generato)
-        
-        # Attesa per i limiti di Telegram
-        if i < 9:
-            print("⏳ Pausa di 15 secondi per i limiti di Telegram...")
-            time.sleep(15)
+
+    # Invia tutto insieme nell'album Telegram
+    str_run_finale = dt_run_utc.strftime('%d/%m/%Y %H:%M')
+    caption_album = f"🌧 Precipitazioni 24h - Prossimi 10 giorni\n⚙️ Media Ensemble ECMWF\n🕒 Run: {str_run_finale} UTC"
+    invia_album_telegram(file_generati, caption_album)
+
+    # Pulizia finale dei file PNG
+    for f in file_generati:
+        if os.path.exists(f):
+            os.remove(f)
 
 def main():
     print("Verifica stato Run ECMWF via Open-Meteo...")
