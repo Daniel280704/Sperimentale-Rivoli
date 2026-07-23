@@ -1,55 +1,133 @@
 import os
+import sys
+import time
 import requests
 import metview as mv
 from ecmwf.opendata import Client
-import warnings
 from datetime import datetime, timedelta
+import warnings
 
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 
-FILENAME = "piemonte-tp-pf.grib"
-PNG_OUTPUT = "piemonte-tp-ens-mean"
+LATITUDE = 45.07347491421504
+LONGITUDE = 7.543461388723449
 
-def download_and_plot():
+FILE_LAST_HOUR = "ultima_ora_ecmwf.txt"
+RUN_DURATION = 362
+START_DELAY = 2
+
+def estrai_limiti_run(hourly_data: dict, hourly_params: list, utc_offset_sec: int):
+    times = hourly_data.get("time", [])
+    if not times: return False, "", None
+
+    hourly_end_indices = []
+    for param in hourly_params:
+        vals = hourly_data.get(param, [])
+        if not vals: return False, "", None
+        
+        end_idx = -1
+        for i in range(len(vals) - 1, -1, -1):
+            if vals[i] is not None:
+                end_idx = i
+                break
+        
+        if end_idx == -1: return False, "", None
+        hourly_end_indices.append(end_idx)
+
+    if len(set(hourly_end_indices)) != 1:
+        return False, "", None
+
+    end_idx1 = hourly_end_indices[0]
+    ultima_ora_valida_str = times[end_idx1]
+
+    dt_end_local = datetime.fromisoformat(ultima_ora_valida_str)
+    dt_end_utc = dt_end_local - timedelta(seconds=utc_offset_sec)
+    dt_run_utc = dt_end_utc - timedelta(hours=RUN_DURATION)
+    dt_start_utc = dt_run_utc + timedelta(hours=START_DELAY)
+
+    dt_start_local = dt_start_utc + timedelta(seconds=utc_offset_sec)
+    start_time_str = dt_start_local.strftime("%Y-%m-%dT%H:%M")
+    nome_run = dt_run_utc.strftime("%H") + "Z"
+
+    try:
+        start_idx = times.index(start_time_str)
+    except ValueError:
+        return False, "", None
+
+    expected_points = RUN_DURATION - START_DELAY + 1
+    actual_points = end_idx1 - start_idx + 1
+
+    if actual_points < expected_points:
+        print(f"⏳ Run ECMWF {nome_run} in caricamento... ({actual_points}/{expected_points} ore)")
+        return False, "", None
+
+    if os.path.exists(FILE_LAST_HOUR):
+        with open(FILE_LAST_HOUR, "r") as f:
+            ultima_ora_salvata = f.read().strip()
+        if ultima_ora_valida_str <= ultima_ora_salvata:
+            print(f"✅ Run ECMWF {nome_run} già elaborato in precedenza.")
+            return False, "", None
+
+    with open(FILE_LAST_HOUR, "w") as f:
+        f.write(ultima_ora_valida_str)
+
+    return True, nome_run, dt_run_utc
+
+def fetch_dati_con_retry() -> dict:
+    URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
+    var_list = [
+        "temperature_2m", "temperature_2m_spread",
+        "temperature_500hPa_spread", "geopotential_height_500hPa"
+    ]
+    params = {
+        "latitude": LATITUDE,
+        "longitude": LONGITUDE,
+        "hourly": ",".join(var_list),
+        "models": "ecmwf_ifs025_ensemble_mean",
+        "timezone": "Europe/Rome",
+        "past_days": 1,
+        "forecast_days": 16
+    }
+    headers = {"User-Agent": "MeteoBot-EnsemblePlotter/8.1"}
+
+    for tentativo in range(3):
+        try:
+            response = requests.get(URL, params=params, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"⚠️ Errore API Open-Meteo: {e}", file=sys.stderr)
+            time.sleep(15)
+    return {}
+
+def invia_telegram(file_path, caption):
+    token = os.getenv("TELEGRAM_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    
+    if not token or not chat_id:
+        print("Credenziali Telegram mancanti.")
+        return
+        
+    url = f"https://api.telegram.org/bot{token}/sendPhoto"
+    payload = {"chat_id": chat_id, "caption": caption}
+    
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "rb") as photo:
+                requests.post(url, data=payload, files={"photo": photo})
+                print(f"📸 Mappa inviata: {caption}")
+        except Exception as e:
+            print(f"Errore invio Telegram: {e}")
+    else:
+        print(f"File {file_path} non trovato.")
+
+def genera_mappe_metview(dt_run_utc, nome_run):
     client = Client("ecmwf", beta=False)
     
-    # Run base: 23 Luglio 2026 alle 00:00 UTC.
-    base_date = datetime(2026, 7, 23)
-    start_date = base_date + timedelta(hours=48) # 25/07/2026 00:00
-    end_date = base_date + timedelta(hours=72)   # 26/07/2026 00:00
+    # Calcoliamo l'indomani a mezzanotte (00:00 UTC)
+    indomani_00z = (dt_run_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     
-    # Scarichiamo i 50 spaghi per lo step 48h e 72h
-    try:
-        client.retrieve(
-            date=base_date.strftime("%Y%m%d"),
-            time=0,
-            step=[48, 72],
-            stream="enfo",     
-            type="pf",         
-            levtype="sfc",     
-            param=['tp'],
-            target=FILENAME
-        )
-    except Exception as e:
-        print(f"Errore download: {e}")
-        return False
-
-    if not os.path.exists(FILENAME):
-        print("Errore: GRIB non scaricato.")
-        return False
-
-    data = mv.read(FILENAME)
-    
-    tp_48 = data.select(step=48)
-    tp_72 = data.select(step=72)
-    
-    # 1. Differenza in mm per ogni scenario (accumulo di 24 ore)
-    tp_diff_mm = (tp_72 - tp_48) * 1000
-    
-    # 2. MEDIA di tutti i 50 scenari
-    tp_mean_mm = mv.mean(tp_diff_mm)
-    
-    # CONFINI GEOGRAFICI E PROVINCE ISTAT
+    # Preparazione dei livelli grafici
     coast = mv.mcoast(
         map_coastline_colour="brown",
         map_coastline_thickness=2,
@@ -61,9 +139,9 @@ def download_and_plot():
         map_administrative_boundaries_colour="brown",
         map_administrative_boundaries_thickness=2,
         
-        # SHAPEFILE PROVINCE 
+        # --- CARICAMENTO SHAPEFILE PROVINCE ISTAT ---
         map_user_layer="on",
-        map_user_layer_name="ProvCM01012026_WGS84.shp", 
+        map_user_layer_name="shapefiles/ProvCM01012026_WGS84.shp", 
         map_user_layer_colour="brown",
         map_user_layer_thickness=1,
         
@@ -73,7 +151,7 @@ def download_and_plot():
         map_label="off"
     )
     
-    # IMPAGINAZIONE: Mappa al 75% per fare spazio alla legenda a destra
+    # IMPAGINAZIONE: Mappa stretta al 75% della larghezza per far spazio alla legenda a destra
     view = mv.geoview(
         map_area_definition="corners",
         area=[43.5, 6.0, 46.8, 10.5], 
@@ -122,12 +200,13 @@ def download_and_plot():
         symbol_marker_index=15     
     )
 
-    # STILE PIOGGIA
+    # STILE PIOGGIA: Tinta unita forzata (area_fill), scala personalizzata
     tp_style = mv.mcont(
         legend="on",                  
         contour="off",                
         contour_shade="on",           
         contour_shade_technique="polygon_shading",
+        contour_shade_method="area_fill",   # <-- Forzatura tinta unita per spegnere il dot shading!
         contour_level_selection_type="level_list",
         contour_level_list=[0.5, 2, 5, 10, 15, 20, 30, 40, 50, 65, 80, 100, 150, 300],
         contour_shade_colour_method="list",
@@ -158,51 +237,87 @@ def download_and_plot():
         legend_box_y_length=14.0,    
         legend_text_font_size=0.4
     )
-    
-    # TITOLO PERSONALIZZATO
-    title_text = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
-    title = mv.mtext(
-        text_lines=[
-            "ECMWF ENS - precipitazioni 24 ore",
-            title_text
-        ], 
-        text_font_size=0.5,
-        text_colour='black'
-    )
-    
-    png = mv.png_output(
-        output_name=PNG_OUTPUT,
-        output_title="piemonte-tp-ens-mean",
-        output_width=1200 
-    )
-    
-    mv.setoutput(png)
-    mv.plot(view, tp_mean_mm, tp_style, capoluoghi, stile_capoluoghi, rivoli_point, stile_rivoli, legend, title)
-    return True
 
-def invia_telegram():
-    token = os.getenv("TELEGRAM_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    
-    if not token or not chat_id:
-        print("Credenziali Telegram non fornite.")
-        return
+    # Ciclo di generazione per 10 giorni
+    for i in range(10):
+        target_start = indomani_00z + timedelta(days=i)
+        target_end = target_start + timedelta(days=1)
         
-    url = f"https://api.telegram.org/bot{token}/sendPhoto"
-    payload = {"chat_id": chat_id, "caption": "Media Scenari ENS (50 Spaghi) - Precipitazioni 24h"}
-    
-    file_path = f"{PNG_OUTPUT}.1.png"
-    
-    if os.path.exists(file_path):
+        step_start = int((target_start - dt_run_utc).total_seconds() / 3600)
+        step_end = int((target_end - dt_run_utc).total_seconds() / 3600)
+        
+        print(f"Elaborazione mappa: {target_start.strftime('%d/%m/%Y')} (Step +{step_start}h / +{step_end}h)")
+        
+        GRIB_FILE = f"tp_{step_start}_{step_end}.grib"
+        PNG_OUTPUT = f"tp_map_{step_start}"
+        
         try:
-            with open(file_path, "rb") as photo:
-                requests.post(url, data=payload, files={"photo": photo})
-                print("Inviato su Telegram!")
+            client.retrieve(
+                date=dt_run_utc.strftime("%Y%m%d"),
+                time=dt_run_utc.hour,
+                step=[step_start, step_end],
+                stream="enfo", type="pf", levtype="sfc", param=['tp'],
+                target=GRIB_FILE
+            )
         except Exception as e:
-            print(f"Errore invio Telegram: {e}")
+            print(f"Errore API ECMWF Open Data per gli step {step_start}-{step_end}: {e}")
+            continue
+
+        if not os.path.exists(GRIB_FILE):
+            continue
+
+        data = mv.read(GRIB_FILE)
+        tp_start = data.select(step=step_start)
+        tp_end = data.select(step=step_end)
+        
+        tp_diff_mm = (tp_end - tp_start) * 1000
+        tp_mean_mm = mv.mean(tp_diff_mm)
+
+        title_text = f"{target_start.strftime('%d/%m/%Y')} - {target_end.strftime('%d/%m/%Y')}"
+        title = mv.mtext(
+            text_lines=[
+                "ECMWF ENS - precipitazioni 24 ore", 
+                title_text
+            ], 
+            text_font_size=0.5, text_colour='black'
+        )
+        
+        png = mv.png_output(output_name=PNG_OUTPUT, output_width=1200)
+        mv.setoutput(png)
+        mv.plot(view, tp_mean_mm, tp_style, capoluoghi, stile_capoluoghi, rivoli_point, stile_rivoli, legend, title)
+        
+        # Invio su Telegram
+        file_generato = f"{PNG_OUTPUT}.1.png"
+        caption = f"🌧 Precipitazioni 24h: {title_text} (Media Ensemble)"
+        invia_telegram(file_generato, caption)
+        
+        # Pulizia file temporanei per non saturare lo storage
+        os.remove(GRIB_FILE)
+        if os.path.exists(file_generato):
+            os.remove(file_generato)
+        
+        # Attesa di 15 secondi tra una foto e l'altra per evitare flood su Telegram
+        if i < 9:
+            print("⏳ Pausa di 15 secondi per i limiti di Telegram...")
+            time.sleep(15)
+
+def main():
+    print("Verifica stato Run ECMWF via Open-Meteo...")
+    data = fetch_dati_con_retry()
+    if not data:
+        sys.exit(0)
+        
+    hourly = data.get("hourly", {})
+    utc_offset = data.get("utc_offset_seconds", 0)
+    params_to_check = ["temperature_2m", "temperature_2m_spread", "temperature_500hPa_spread", "geopotential_height_500hPa"]
+    
+    is_new, nome_run, dt_run_utc = estrai_limiti_run(hourly, params_to_check, utc_offset)
+    
+    if is_new:
+        print(f"🚀 Lancio generazione pluvio per il RUN {nome_run} ({dt_run_utc})")
+        genera_mappe_metview(dt_run_utc, nome_run)
     else:
-        print(f"File {file_path} non trovato.")
+        print("Nessun nuovo run completo trovato. Uscita.")
 
 if __name__ == "__main__":
-    if download_and_plot():
-        invia_telegram()
+    main()
