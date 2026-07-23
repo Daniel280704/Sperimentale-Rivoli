@@ -3,6 +3,7 @@ import requests
 import metview as mv
 from ecmwf.opendata import Client
 import warnings
+from datetime import datetime, timedelta
 
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 
@@ -12,12 +13,17 @@ PNG_OUTPUT = "piemonte-tp-ens-mean"
 def download_and_plot():
     client = Client("ecmwf", beta=False)
     
-    # Scarichiamo tutti i 50 spaghi dell'ensemble (type="pf")
+    # Run base: 23 Luglio 2026 alle 00:00 UTC.
+    base_date = datetime(2026, 7, 23)
+    start_date = base_date + timedelta(hours=24)
+    end_date = base_date + timedelta(hours=48)
+    
+    # Scarichiamo i 50 spaghi per lo step 24h e 48h
     try:
         client.retrieve(
-            date=20260723,
+            date=base_date.strftime("%Y%m%d"),
             time=0,
-            step=[48, 96],
+            step=[24, 48],
             stream="enfo",     
             type="pf",         
             levtype="sfc",     
@@ -34,16 +40,16 @@ def download_and_plot():
 
     data = mv.read(FILENAME)
     
+    tp_24 = data.select(step=24)
     tp_48 = data.select(step=48)
-    tp_96 = data.select(step=96)
     
-    # 1. Calcoliamo la differenza in mm per ogni scenario
-    tp_diff_mm = (tp_96 - tp_48) * 1000
+    # 1. Differenza in mm per ogni scenario (accumulo di 24 ore)
+    tp_diff_mm = (tp_48 - tp_24) * 1000
     
-    # 2. Calcoliamo la MEDIA di tutti i 50 scenari
+    # 2. MEDIA di tutti i 50 scenari
     tp_mean_mm = mv.mean(tp_diff_mm)
     
-    # CONFINI GEOGRAFICI MARRONI + SHAPEFILE PROVINCE
+    # CONFINI GEOGRAFICI E PROVINCE ISTAT
     coast = mv.mcoast(
         map_coastline_colour="brown",
         map_coastline_thickness=2,
@@ -53,13 +59,13 @@ def download_and_plot():
         map_boundaries_thickness=2,
         map_administrative_boundaries="on", 
         map_administrative_boundaries_colour="brown",
-        map_administrative_boundaries_thickness=2, # Regioni più spesse (2)
+        map_administrative_boundaries_thickness=2,
         
-        # --- CARICAMENTO SHAPEFILE PROVINCE ---
+        # SHAPEFILE PROVINCE (Nome ufficiale ISTAT)
         map_user_layer="on",
-        map_user_layer_name="shapefiles/province.shp", # Assicurati che il file caricato su GitHub si chiami così
+        map_user_layer_name="ProvCM01012026_WGS84.shp", 
         map_user_layer_colour="brown",
-        map_user_layer_thickness=1, # Province più sottili (1)
+        map_user_layer_thickness=1,
         
         map_coastline_land_shade="off", 
         map_coastline_sea_shade="off",
@@ -67,12 +73,14 @@ def download_and_plot():
         map_label="off"
     )
     
-    # IMPAGINAZIONE
+    # IMPAGINAZIONE: Mappa stretta al 75% della larghezza per far spazio alla legenda a destra
     view = mv.geoview(
         map_area_definition="corners",
         area=[43.5, 6.0, 46.8, 10.5], 
         coastlines=coast,
-        subpage_y_position=5,   
+        subpage_x_position=5,
+        subpage_y_position=12,   
+        subpage_x_length=75,
         subpage_y_length=80     
     )
 
@@ -96,7 +104,7 @@ def download_and_plot():
         symbol_text_font_style="bold"
     )
 
-    # RIVOLI (Pallino specifico)
+    # RIVOLI
     lat_rivoli = [45.07]
     lon_rivoli = [7.51]
 
@@ -114,16 +122,18 @@ def download_and_plot():
         symbol_marker_index=15     
     )
 
-    # STILE PIOGGIA: Tinta unita, scala personalizzata (parte da 5mm)
+    # STILE PIOGGIA
     tp_style = mv.mcont(
         legend="on",                  
         contour="off",                
         contour_shade="on",           
         contour_shade_technique="polygon_shading",
         contour_level_selection_type="level_list",
-        contour_level_list=[5, 10, 15, 20, 30, 40, 50, 65, 80, 100, 150], # Valori inferiori a 5mm restano trasparenti
+        contour_level_list=[0.5, 2, 5, 10, 15, 20, 30, 40, 50, 65, 80, 100, 150, 300],
         contour_shade_colour_method="list",
-        contour_shade_colour_list=[ 
+        contour_shade_colour_list=[
+            "RGB(0.6, 0.8, 1.0)",  
+            "RGB(0.0, 0.3, 1.0)",  
             "RGB(0.4, 0.9, 0.4)",  
             "RGB(0.0, 0.6, 0.0)",  
             "RGB(1.0, 0.9, 0.0)",  
@@ -138,21 +148,26 @@ def download_and_plot():
         ]
     )
     
-    # LEGENDA IN BASSO
+    # LEGENDA IN VERTICALE A DESTRA
     legend = mv.mlegend(
         legend_display_type="continuous",
         legend_box_mode="positional",
-        legend_box_x_position=1.0,   
-        legend_box_y_position=16.5,  
-        legend_box_x_length=27.0,    
-        legend_box_y_length=1.5,     
+        legend_box_x_position=26.5,  # Posizionata a destra nel foglio
+        legend_box_y_position=3.0,   # Allineata in alto
+        legend_box_x_length=1.5,     # Barra stretta
+        legend_box_y_length=14.0,    # Barra lunga verticalmente
         legend_text_font_size=0.4
     )
     
-    # TITOLO VUOTO 
+    # TITOLO PERSONALIZZATO
+    title_text = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
     title = mv.mtext(
-        text_lines=[" "], 
-        text_font_size=0.1
+        text_lines=[
+            "ECMWF ENS - precipitazioni 24 ore",
+            title_text
+        ], 
+        text_font_size=0.5,
+        text_colour='black'
     )
     
     png = mv.png_output(
@@ -162,8 +177,6 @@ def download_and_plot():
     )
     
     mv.setoutput(png)
-    
-    # Plot finale
     mv.plot(view, tp_mean_mm, tp_style, capoluoghi, stile_capoluoghi, rivoli_point, stile_rivoli, legend, title)
     return True
 
@@ -176,7 +189,7 @@ def invia_telegram():
         return
         
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
-    payload = {"chat_id": chat_id, "caption": "Media Scenari ENS (50 Spaghi) - Precipitazioni 48h (>= 5mm)"}
+    payload = {"chat_id": chat_id, "caption": "Media Scenari ENS (50 Spaghi) - Precipitazioni 24h"}
     
     file_path = f"{PNG_OUTPUT}.1.png"
     
