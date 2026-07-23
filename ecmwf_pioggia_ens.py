@@ -12,7 +12,6 @@ PNG_OUTPUT = "piemonte-tp-hres"
 def download_and_plot():
     client = Client("ecmwf", beta=False)
     
-    # Run base: 23 Luglio 2026 alle 00:00 UTC.
     try:
         client.retrieve(
             date=20260723,
@@ -57,13 +56,16 @@ def download_and_plot():
         map_label="off"
     )
     
+    # IMPAGINAZIONE: Solleviamo la mappa per fare spazio alla legenda
     view = mv.geoview(
         map_area_definition="corners",
         area=[43.5, 6.0, 46.8, 10.5], 
-        coastlines=coast
+        coastlines=coast,
+        subpage_y_position=12,
+        subpage_y_length=72
     )
 
-    # CAPOLUOGHI DI PROVINCIA
+    # CAPOLUOGHI DI PROVINCIA (Punti marroni)
     lats = [45.07, 44.38, 44.90, 44.91, 45.32, 45.45, 45.56, 45.92]
     lons = [7.68,  7.55,  8.20,  8.61,  8.42,  8.61,  8.05,  8.55]
 
@@ -81,22 +83,16 @@ def download_and_plot():
         symbol_marker_index=15
     )
 
-    # STILE ISOIETE: Corretta la sintassi per colorare le singole linee
+    # STILE PIOGGIA: Tinta unita, niente linee, scala personalizzata
     tp_style = mv.mcont(
-        legend="off",
-        contour="on",
-        contour_shade="off",
-        contour_line_thickness=3,
-        contour_highlight="off",
-        contour_label="on",
-        contour_label_height=0.4,
-        contour_label_colour="black",
-        contour_label_frequency=1,
+        legend="on",                  # Legenda riattivata
+        contour="off",                # <-- SPENTE LE LINEE (ISOIETE)
+        contour_shade="on",           # <-- ACCESO IL COLORE
+        contour_shade_technique="polygon_shading",
         contour_level_selection_type="level_list",
         contour_level_list=[0.5, 2, 5, 10, 15, 20, 30, 40, 50, 65, 80, 100, 150],
-        contour_line_colour="rainbow",                     # <-- ATTIVA LA MODALITA' MULTICOLORE
-        contour_line_colour_rainbow_method="list",         # <-- SPECIFICA CHE SI USA UNA LISTA
-        contour_line_colour_rainbow_colour_list=[          # <-- LA TUA LISTA DI COLORI
+        contour_shade_colour_method="list",
+        contour_shade_colour_list=[
             "RGB(0.6, 0.8, 1.0)",  
             "RGB(0.0, 0.3, 1.0)",  
             "RGB(0.4, 0.9, 0.4)",  
@@ -113,9 +109,20 @@ def download_and_plot():
         ]
     )
     
+    # LEGENDA IN BASSO
+    legend = mv.mlegend(
+        legend_display_type="continuous",
+        legend_box_mode="positional",
+        legend_box_x_position=1.0,   
+        legend_box_y_position=17.5,  
+        legend_box_x_length=27.0,    
+        legend_box_y_length=1.5,     
+        legend_text_font_size=0.4
+    )
+    
     title = mv.mtext(
         text_lines=[
-            "Isoiete Accumulo 48h (mm) - ECMWF HRES",
+            "Accumulo 48h (mm) - ECMWF HRES (Aree a tinta unita)",
             "Inizio: 25 Lug 00:00 UTC  |  Fine: 26 Lug 23:59 UTC (Run Base: 23 Lug 2026 00:00 UTC)"
         ],
         text_font_size=0.45,
@@ -130,8 +137,8 @@ def download_and_plot():
     
     mv.setoutput(png)
     
-    # Plot con Capoluoghi
-    mv.plot(view, tp_accumulo_mm, tp_style, capoluoghi, stile_capoluoghi, title)
+    # Plot con aggiunta della legenda
+    mv.plot(view, tp_accumulo_mm, tp_style, capoluoghi, stile_capoluoghi, legend, title)
     return True
 
 def invia_telegram():
@@ -143,7 +150,7 @@ def invia_telegram():
         return
         
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
-    payload = {"chat_id": chat_id, "caption": "Isoiete Precipitazioni 48h (25-26 Luglio) - ECMWF HRES"}
+    payload = {"chat_id": chat_id, "caption": "Precipitazioni 48h (25-26 Luglio) - Tinta Unita - ECMWF HRES"}
     
     file_path = f"{PNG_OUTPUT}.1.png"
     
