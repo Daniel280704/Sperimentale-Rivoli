@@ -8,20 +8,29 @@ on:
 jobs:
   build_and_plot:
     runs-on: ubuntu-latest
+    
+    # IMPORTANTE: Necessario per far funzionare correttamente l'ambiente Conda negli step "run"
+    defaults:
+      run:
+        shell: bash -l {0}
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
         with:
-          python-version: '3.10'
+          activate-environment: meteo-env
+          python-version: "3.10"
+          channels: conda-forge, defaults
+          channel-priority: strict
+          auto-activate-base: false
 
-      - name: Install System Dependencies & ecCodes
+      - name: Install Metview and Dependencies via Conda
+        # L'installazione da conda-forge scarica i binari corretti (metview-batch) e i binding Python (metview-python)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libeccodes-tools libeccodes-dev metview
+          conda install -y -c conda-forge metview-batch metview-python eccodes requests numpy pandas matplotlib
 
       - name: Clone COSMO and ECMWF GRIB Definitions
         run: |
@@ -30,11 +39,6 @@ jobs:
           git clone https://github.com/COSMO-ORG/eccodes-cosmo-resources.git
           git clone https://github.com/ecmwf/eccodes.git
           cd ..
-
-      - name: Install Python Packages
-        run: |
-          pip install --upgrade pip
-          pip install metview requests numpy pandas matplotlib eccodes
 
       - name: Run ICON-CH2 Mapping Script
         env:
