@@ -113,14 +113,17 @@ def scarica_grib_ch2_stac(dt_run_utc: datetime, step: int, var_name: str = "TOT_
         assets = features[0].get("assets", {})
         download_url = ""
         
-        # Cerca l'href che finisce per .grib2
+        # Cerca ".grib2" all'interno della stringa (ignora i parametri query accodati)
         for key, asset in assets.items():
-            if "href" in asset and asset["href"].endswith(".grib2"):
-                download_url = asset["href"]
+            href = asset.get("href", "")
+            if ".grib2" in href: 
+                download_url = href
                 break
                 
         if not download_url:
-            print("Nessun link GRIB (.grib2) trovato nella risposta STAC.")
+            print("Nessun link GRIB (.grib2) trovato. Asset restituiti dall'API:")
+            for k, v in assets.items():
+                print(f" - {k}: {v.get('href', 'No href')}")
             return ""
             
         print(f"Scaricamento file presigned per step +{step}h...")
@@ -138,7 +141,7 @@ def scarica_grib_ch2_stac(dt_run_utc: datetime, step: int, var_name: str = "TOT_
         print(f"Errore STAC/Download {filename}: {e}")
         
     return ""
-
+    
 def invia_telegram(file_path: str, caption: str):
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
