@@ -1,6 +1,8 @@
-name: Test API STAC Nativo (MeteoSwiss)
+name: Generate ICON-CH2 ENS Maps
 
 on:
+  schedule:
+    - cron: '15 2,8,14,20 * * *'
   workflow_dispatch:
 
 jobs:
@@ -27,8 +29,6 @@ jobs:
           cd opendata-nwp-demos
           pip install poetry
           poetry config virtualenvs.create false
-          # geopandas aggiunto qui per gestire gli shapefile
-          poetry run pip install geopandas 
           poetry install --no-ansi
 
       - name: Esegui Python Script
@@ -36,8 +36,9 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          # Copia script E cartella shapefiles nel workspace di lavoro
+          # Sposta lo script e la cartella shapefiles nel working directory delle librerie
           cp icon_ch2_ens_map.py opendata-nwp-demos/
-          cp -r shapefiles opendata-nwp-demos/ 2>/dev/null || true
+          cp -r shapefiles opendata-nwp-demos/ || echo "Attenzione: Cartella shapefiles non trovata"
           cd opendata-nwp-demos
+          pip install pytz
           python icon_ch2_ens_map.py
