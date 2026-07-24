@@ -35,6 +35,6 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           # Copiamo lo script dentro la cartella clonata per accedere alle librerie installate
-          cp test_ch2_stac.py opendata-nwp-demos/
+          cp icon_ch2_ens_map.py opendata-nwp-demos/
           cd opendata-nwp-demos
           python icon_ch2_ens_map.py
