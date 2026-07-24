@@ -33,6 +33,31 @@ LATITUDE = 45.07
 LONGITUDE = 7.54
 FILE_LAST_HOUR = "ultima_ora_icon_ch2_cape.txt"
 
+def fetch_dati_con_retry(max_retries=3, timeout=40):
+    """Scarica i dati meteo con retry automatico"""
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": LATITUDE,
+        "longitude": LONGITUDE,
+        "timezone": "Europe/Rome",
+        "forecast_days": 5,
+        "models": "dwd_icon_seamless",
+        "hourly": "temperature_2m,cape"
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            print(f"⚠️ Tentativo {attempt + 1}/{max_retries} fallito: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # Backoff esponenziale
+            else:
+                print("❌ Tutti i tentativi di download sono falliti")
+                return None
+
 def estrai_limiti_run(hourly_data: dict, ref_param: str) -> tuple[bool, str, datetime]:
     times = hourly_data.get("time", [])
     mean_vals = hourly_data.get(ref_param, [])
