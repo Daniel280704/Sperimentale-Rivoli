@@ -36,9 +36,10 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          # Sposta lo script e la cartella shapefiles nel working directory delle librerie
+          # Sposta lo script e la cartella shapefiles nel working directory
           cp icon_ch2_ens_map.py opendata-nwp-demos/
           cp -r shapefiles opendata-nwp-demos/ || echo "Attenzione: Cartella shapefiles non trovata"
           cd opendata-nwp-demos
-          pip install pytz
+          # Installazione delle librerie extra non incluse in earthkit
+          pip install pytz shapely
           python icon_ch2_ens_map.py
