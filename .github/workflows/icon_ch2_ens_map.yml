@@ -1,46 +1,40 @@
-name: Test API STAC (Run Forzato 23/07/2026)
+name: Test API STAC Nativo (MeteoSwiss)
 
 on:
   workflow_dispatch:
 
 jobs:
-  run_stac_test:
+  plot_map:
     runs-on: ubuntu-latest
     
-    defaults:
-      run:
-        shell: bash -l {0}
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v3
+      - name: System Dependencies (ecCodes)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libeccodes-tools libeccodes-dev
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          activate-environment: meteo-stac
-          python-version: "3.10"
-          channels: conda-forge, defaults
-          channel-priority: strict
-          auto-activate-base: false
+          python-version: "3.11"
 
-      - name: Install Metview and Dependencies
+      - name: Setup Ecosistema MeteoSwiss (meteodata-lab)
         run: |
-          conda install -y -c conda-forge metview-batch metview-python eccodes requests numpy pandas matplotlib
-
-      - name: Clone COSMO and ECMWF GRIB Definitions
-        run: |
-          mkdir -p grib_definitions
-          cd grib_definitions
-          git clone https://github.com/COSMO-ORG/eccodes-cosmo-resources.git
-          git clone https://github.com/ecmwf/eccodes.git
-          cd ..
+          git clone https://github.com/MeteoSwiss/opendata-nwp-demos.git
+          cd opendata-nwp-demos
+          pip install poetry
+          poetry config virtualenvs.create false
+          poetry install --no-ansi
 
       - name: Esegui Python Script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          # Set the GRIB format local definitions of the COSMO consortium
-          GRIB_DEFINITION_PATH: ${{ github.workspace }}/grib_definitions/eccodes-cosmo-resources/definitions:${{ github.workspace }}/grib_definitions/eccodes/definitions
         run: |
+          # Copiamo lo script dentro la cartella clonata per accedere alle librerie installate
+          cp test_ch2_stac.py opendata-nwp-demos/
+          cd opendata-nwp-demos
           python icon_ch2_ens_map.py
