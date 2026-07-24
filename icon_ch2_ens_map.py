@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import glob
 import requests
 import urllib3
 import pytz
@@ -50,7 +51,7 @@ def estrai_limiti_run(hourly_data: dict, ref_param: str) -> tuple[bool, str, dat
     dt_end_local = rome_tz.localize(datetime.fromisoformat(ultima_ora_valida_str))
     dt_end_utc = dt_end_local.astimezone(timezone.utc)
     
-    # Troviamo l'innesco sapendo che il modello completo dura 120 ore
+    # Innesco sapendo che ICON-CH2 dura 120 ore
     dt_run_utc = dt_end_utc - timedelta(hours=120)
     
     dt_start_local = (dt_run_utc + timedelta(hours=1)).astimezone(rome_tz)
@@ -173,33 +174,42 @@ def genera_mappe_accumuli(dt_run_utc: datetime, nome_run: str):
 
     # 2. Elaborazione dinamica dei confini da Shapefile
     prov_geoms = []
-    shp_path = "shapefiles/ProvCM01012026_WGS84.shp"
     
-    if os.path.exists(shp_path):
+    # Ricerca dinamica del file in caso di percorsi alterati da GitHub
+    shp_list = glob.glob("**/*ProvCM*.shp", recursive=True)
+    
+    if shp_list:
+        shp_path = shp_list[0]
+        print(f"Shapefile trovato in: {shp_path}")
         try:
             for record in shpreader.Reader(shp_path).records():
-                # Filtra solo i poligoni che contengono la parola 'Piemonte' negli attributi
+                # Filtra solo le province piemontesi
                 if any("piemonte" in str(v).lower() for v in record.attributes.values()):
                     prov_geoms.append(record.geometry)
-            
-            # Fallback: se lo shapefile è già stato pre-ritagliato e non ha il nome della regione
             if not prov_geoms:
-                prov_geoms = [record.geometry for record in shpreader.Reader(shp_path).records()]
+                prov_geoms = [r.geometry for r in shpreader.Reader(shp_path).records()]
         except Exception as e:
             print(f"Errore lettura shapefile: {e}")
+
+    # Fallback di sicurezza: se manca lo shapefile, usa i dati globali per il Piemonte
+    if not prov_geoms:
+        print("Fallback: Utilizzo confini regionali di Natural Earth per il Piemonte...")
+        ne_path = shpreader.natural_earth(resolution='10m', category='cultural', name='admin_1_states_provinces')
+        for record in shpreader.Reader(ne_path).records():
+            if record.attributes.get('name', '').lower() == 'piemonte':
+                prov_geoms.append(record.geometry)
 
     prov_feature = None
     regione_feature = None
     
     if prov_geoms:
-        # Confini provinciali (sottili, tratteggiati)
-        prov_feature = cfeature.ShapelyFeature(prov_geoms, ccrs.PlateCarree(), edgecolor='black', facecolor='none', linewidth=0.4, linestyle=':')
+        # ZORDER=10 forza i confini a posizionarsi SOPRA i colori della pioggia
+        prov_feature = cfeature.ShapelyFeature(prov_geoms, ccrs.PlateCarree(), edgecolor='black', facecolor='none', linewidth=0.5, linestyle=':', zorder=10)
         
-        # Confine regionale: unione di tutti i poligoni provinciali (spesso, continuo)
         regione_geom = unary_union(prov_geoms)
-        regione_feature = cfeature.ShapelyFeature([regione_geom], ccrs.PlateCarree(), edgecolor='black', facecolor='none', linewidth=2.0, linestyle='-')
+        # ZORDER=11 per i bordi spessi esterni
+        regione_feature = cfeature.ShapelyFeature([regione_geom], ccrs.PlateCarree(), edgecolor='black', facecolor='none', linewidth=2.0, linestyle='-', zorder=11)
 
-    # Dati capoluoghi Piemontesi
     lats = [45.07, 44.38, 44.90, 44.91, 45.32, 45.45, 45.56, 45.92]
     lons = [7.68,  7.55,  8.20,  8.61,  8.42,  8.61,  8.05,  8.55]
     sigle = ["TO", "CN", "AT", "AL", "VC", "NO", "BI", "VB"]
@@ -218,29 +228,23 @@ def genera_mappe_accumuli(dt_run_utc: datetime, nome_run: str):
         chart = earthkit.plots.Map(domain=domain)
         chart.grid_cells(prec_geo, x="lon", y="lat", style=Style(colors=my_colors, levels=my_levels))
 
-        # Aggiunta Confini dinamici (Nessun altro confine tracciato)
+        # Disegna in modo esclusivo i confini del Piemonte
         if regione_feature: chart.ax.add_feature(regione_feature)
         if prov_feature: chart.ax.add_feature(prov_feature)
-        
-        chart.coastlines(linewidth=0.5) # Disegna solo la costa ligure senza i confini politici
 
-        # Aggiunta Pallino isolato (senza etichetta)
-        chart.ax.plot(7.51, 45.07, marker='o', color='brown', markersize=6, transform=ccrs.PlateCarree())
+        # ZORDER=12 per assicurarsi che città e indicatori dominino su tutto
+        chart.ax.plot(7.51, 45.07, marker='o', color='brown', markersize=6, transform=ccrs.PlateCarree(), zorder=12)
 
-        # Aggiunta Capoluoghi con Sigle
         for lon, lat, sigla in zip(lons, lats, sigle):
-            chart.ax.plot(lon, lat, marker='o', color='black', markersize=3, transform=ccrs.PlateCarree())
-            chart.ax.text(lon + 0.05, lat + 0.05, sigla, color='black', fontsize=9, fontweight='bold', transform=ccrs.PlateCarree())
+            chart.ax.plot(lon, lat, marker='o', color='black', markersize=3, transform=ccrs.PlateCarree(), zorder=12)
+            chart.ax.text(lon + 0.05, lat + 0.05, sigla, color='black', fontsize=9, fontweight='bold', transform=ccrs.PlateCarree(), zorder=12)
 
-        # Layout Etichette Temporali Locali
         start_local = dt_run_local + timedelta(hours=a)
         end_local = dt_run_local + timedelta(hours=b)
         str_valida = f"Dalle {start_local.strftime('%H:%M del %d/%m')} alle {end_local.strftime('%H:%M del %d/%m')}"
 
         title = f"ICON-CH2 EPS - Accumulo Precipitazioni\nRun: {dt_run_utc.strftime('%d/%m/%Y %H:%M UTC')} | {str_valida}"
         chart.title(title)
-        
-        # Etichetta unificata della legenda in mm
         chart.legend(label="Precipitazioni (mm)")
 
         filename = f"accumulo_{a}_{b}.png"
@@ -249,7 +253,7 @@ def genera_mappe_accumuli(dt_run_utc: datetime, nome_run: str):
         invia_telegram(filename, f"🌧 ICON-CH2 EPS: Accumulo Pioggia\n🗓 {str_valida}\n⚙️ Run {nome_run}")
         
         plt.close(chart.fig)
-        time.sleep(10) # Pausa rispetto limiti Telegram
+        time.sleep(10)
 
 def main():
     print("Cerco l'ultimo run completo ICON-CH2 via Open-Meteo...")
